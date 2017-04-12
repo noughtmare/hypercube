@@ -23,14 +23,7 @@ dependencies:
   - vector
   - containers
   - deepseq
-  - bytestring
-  - array
-  - directory
-  - filepath
-  - JuicyPixels >= 3
-  - OpenGLRaw >= 3.0 && < 3.3
-  - transformers >= 0.3
-  - hpp
+  - GLUtil
 
 
 executables:

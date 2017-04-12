@@ -2,6 +2,10 @@ resolver: lts-8.9
 
 packages:
 - '.'
+- location:
+    git: https://github.com/noughtmare/GLUtil
+    commit: e59705e39f650420c00897022b1827af69abbee1
+  extra-dep: true
 
 extra-deps: []
 
