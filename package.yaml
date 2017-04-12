@@ -13,20 +13,25 @@ ghc-options: -O2 -threaded
 
 dependencies:
   - base >= 4.7 && < 5
-  - repa
   - GLFW-b
-  - eve
   - mtl
   - data-default
   - lens
-  - random
   - stm
   - OpenGL
-  - GLUtil
   - linear
   - vector
   - containers
   - deepseq
+  - bytestring
+  - array
+  - directory
+  - filepath
+  - JuicyPixels >= 3
+  - OpenGLRaw >= 3.0 && < 3.3
+  - transformers >= 0.3
+  - hpp
+
 
 executables:
   hypercube:
