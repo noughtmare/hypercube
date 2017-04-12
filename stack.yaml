@@ -1,11 +1,13 @@
-resolver: lts-8.8
+resolver: lts-8.9
 
 packages:
 - '.'
+- location:
+    git: https://github.com/noughtmare/GLUtil
+    commit: e59705e39f650420c00897022b1827af69abbee1
+  extra-dep: true
 
-extra-deps: 
-- eve-0.1.7
-- GLUtil-0.9.1.1
+extra-deps: []
 
 flags: {}
 

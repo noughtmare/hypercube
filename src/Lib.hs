@@ -234,7 +234,7 @@ generatingF (V3 x y z)
   | otherwise = Air
 
 gameLoop :: IO ()
-gameLoop = withWindow 640 480 "Jaro's minecraft ripoff [WIP]" $ \win -> do
+gameLoop = withWindow 1280 720 "Jaro's minecraft ripoff [WIP]" $ \win -> do
   -- Disable the cursor
   GLFW.setCursorInputMode win GLFW.CursorInputMode'Disabled
 
@@ -319,6 +319,7 @@ gameLoop = withWindow 640 480 "Jaro's minecraft ripoff [WIP]" $ \win -> do
             handle isPressed GLFW.Key'D         $ cam . camPos += right
             handle isPressed GLFW.Key'Space     $ cam . camPos += up
             handle isPressed GLFW.Key'LeftShift $ cam . camPos -= up
+            handle isPressed GLFW.Key'R         $ lift $ GLFW.setCursorInputMode win GLFW.CursorInputMode'Normal
 
             handle isPressed GLFW.Key'LeftControl  $ cam . speed .= 50
             handle (not . isPressed) GLFW.Key'LeftControl $ cam . speed .= 5
