@@ -9,7 +9,7 @@ category:            Web
 extra-source-files:
 - README.md
 
-ghc-options: -O2 -threaded
+ghc-options: -O2 -threaded -Wall
 
 dependencies:
   - base >= 4.7 && < 5

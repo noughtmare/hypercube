@@ -1,43 +1,33 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE LambdaCase #-} 
-{-# LANGUAGE TemplateHaskell #-} 
 {-# LANGUAGE FlexibleContexts #-} 
 {-# LANGUAGE BangPatterns #-} 
 
-module Lib where
+module Lib (gameLoop) where
 
-import qualified Debug.Trace as D
+import Types
+import Faces
+import Config
 
-import System.IO
+-- import qualified Debug.Trace as D
+
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.State
-import Data.Default 
 import Control.Lens
 import Control.Concurrent
-
-import Data.List
 import Data.Maybe
-
 import qualified Graphics.Rendering.OpenGL as GL
 import qualified Graphics.UI.GLFW as GLFW
 import qualified Graphics.GLUtil as U
-
 import Foreign.Storable (sizeOf)
-
 import Linear
 import Data.Foldable
-
 import Data.IORef
 import Control.Arrow
-
 import qualified Data.Vector as V
-
-import Foreign.Ptr
-
 import qualified Data.Map as M
 import Control.DeepSeq
-
 import Control.Concurrent.STM.TChan
 import Control.Monad.STM
 
@@ -46,138 +36,26 @@ import Control.Monad.STM
 toGLmatrix :: M44 Float -> IO (GL.GLmatrix Float)
 toGLmatrix = GL.newMatrix GL.RowMajor . (toList >=> toList)
 
-rotation :: Float -> Float -> Float -> Float -> M44 Float
-rotation angle x y z = identity & _m33 .~ fromQuaternion (Quaternion (cos (angle/2)) ((sin (angle/2) *) <$> normalize (V3 x y z)))
-
--- Data
+-- rotation :: Float -> Float -> Float -> Float -> M44 Float
+-- rotation angle x y z = identity & _m33 .~ fromQuaternion (Quaternion (cos (angle/2)) ((sin (angle/2) *) <$> normalize (V3 x y z)))
 
 toVAO :: [(V3 Float, V2 Float)] -- VBO data
       -> IO GL.VertexArrayObject -- VAO result
 toVAO vboData = U.makeVAO $ do
-  vbo <- U.makeBuffer GL.ArrayBuffer $ vboData >>= \(V3 a b c, V2 d e) -> [a,b,c,d,e]
+  vbo <- U.makeBuffer GL.ArrayBuffer $ vboData >>= uncurry (++) . (toList *** toList)
   GL.bindBuffer GL.ArrayBuffer GL.$= Just vbo
 
-  let f = fromIntegral $ sizeOf (undefined :: Float) in do
-    let attrib = GL.AttribLocation 0 in do
-      GL.vertexAttribPointer attrib GL.$=
-        (GL.ToFloat, GL.VertexArrayDescriptor 3 GL.Float (5 * f) U.offset0)
-      GL.vertexAttribArray attrib GL.$= GL.Enabled
+  let f = fromIntegral $ sizeOf (undefined :: Float)
+      g n size totSize offset = do
+        let attrib = GL.AttribLocation n
+        GL.vertexAttribPointer attrib GL.$=
+          (GL.ToFloat, GL.VertexArrayDescriptor size GL.Float totSize (U.offsetPtr (fromIntegral offset)))
+        GL.vertexAttribArray attrib GL.$= GL.Enabled
+  g 0 3 (5 * f) (0 * f)
+  g 1 2 (5 * f) (3 * f)
 
-    let attrib = GL.AttribLocation 1 in do
-      GL.vertexAttribPointer attrib GL.$=
-        (GL.ToFloat, GL.VertexArrayDescriptor 2 GL.Float (5 * f) (U.offsetPtr (fromIntegral $ 3 * f)))
-      GL.vertexAttribArray attrib GL.$= GL.Enabled
-
-northFace = 
-  [ (V3 1 1 1, V2 0 0) -- top    right
-  , (V3 0 1 1, V2 1 0) -- top    left
-  , (V3 0 0 1, V2 1 1) -- bottom left
-  , (V3 0 0 1, V2 1 1) -- bottom left
-  , (V3 1 0 1, V2 0 1) -- bottom right
-  , (V3 1 1 1, V2 0 0) -- top    right
-  ]
-
-southFace = 
-  [ (V3 0 0 0, V2 1 1) -- bottom left
-  , (V3 0 1 0, V2 1 0) -- top    left
-  , (V3 1 1 0, V2 0 0) -- top    right
-  , (V3 1 1 0, V2 0 0) -- top    right
-  , (V3 1 0 0, V2 0 1) -- bottom right
-  , (V3 0 0 0, V2 1 1) -- bottom left
-  ]
-
-eastFace =
-  [ (V3 1 1 0, V2 0 0) -- top    right
-  , (V3 1 1 1, V2 1 0) -- top    left
-  , (V3 1 0 1, V2 1 1) -- bottom left
-  , (V3 1 0 1, V2 1 1) -- bottom left
-  , (V3 1 0 0, V2 0 1) -- bottom right
-  , (V3 1 1 0, V2 0 0) -- top    right
-  ]
-  
-westFace = 
-  [ (V3 0 0 1, V2 1 1) -- bottom left
-  , (V3 0 1 1, V2 1 0) -- top    left
-  , (V3 0 1 0, V2 0 0) -- top    right
-  , (V3 0 1 0, V2 0 0) -- top    right
-  , (V3 0 0 0, V2 0 1) -- bottom right
-  , (V3 0 0 1, V2 1 1) -- bottom left
-  ]
-
-topFace =
-  [ (V3 0 1 0, V2 1 1) -- bottom left
-  , (V3 0 1 1, V2 1 0) -- top    left
-  , (V3 1 1 1, V2 0 0) -- top    right
-  , (V3 1 1 1, V2 0 0) -- top    right
-  , (V3 1 1 0, V2 0 1) -- bottom right
-  , (V3 0 1 0, V2 1 1) -- bottom left
-  ]
-
-bottomFace =
-  [ (V3 1 0 1, V2 0 0) -- top    right
-  , (V3 0 0 1, V2 1 0) -- top    left
-  , (V3 0 0 0, V2 1 1) -- bottom left
-  , (V3 0 0 0, V2 1 1) -- bottom left
-  , (V3 1 0 0, V2 0 1) -- bottom right
-  , (V3 1 0 1, V2 0 0) -- top    right
-  ]
-
-data Camera 
-  = Camera
-  { _camPos :: !(V3 Float)
-  , _jaw :: !Float
-  , _pitch :: !Float
-  , _speed :: !Float
-  , _sensitivity :: !Float
-  } deriving (Show)
-
-makeLensesFor [("_camPos","camPos"),("_jaw","jaw"),("_speed","speed"),("_sensitivity","sensitivity")] ''Camera
-
--- | "Advanced" lensing (we check bounds inside the setter)
-pitch :: Lens' Camera Float
-pitch = lens _pitch setter
-  where
-    setter cam x
-      | abs x > pi/2 - epsilon = cam {_pitch = (signum x) * (pi / 2 - epsilon)}
-      | otherwise              = cam {_pitch = x}
-    epsilon = 0.005
-
-gaze :: Getter Camera (V3 Float)
-gaze = to $ gaze' . (view jaw &&& view pitch)
-  where
-    gaze' (jaw,pitch) 
-      = rotate (axisAngle (V3 0 1 0) jaw)
-      $ rotate (axisAngle (V3 1 0 0) pitch) 
-      $ V3 0 0 (-1)
-
-data Game 
-  = Game
-  { _cam       :: !Camera
-  , _lastFrame :: !Float
-  , _cursorPos :: !(V2 Float)
-  , _world     :: !(IORef World)
-  }
-
-type World = M.Map (V3 Int) Chunk
-data Chunk = Chunk
-  { _vec :: !(V.Vector Block)
-  , _mesh :: Either (IO GL.VertexArrayObject) GL.VertexArrayObject
-  , _draw :: IO ()
-  }
-
-instance Show Chunk where
-  show _ = "chunk"
-
-data Block
-  = Stone
-  | Air
-  deriving (Eq, Ord, Show, Enum)
-
-makeLenses ''Game
-makeLenses ''Chunk
-
--- This is slightly ugly
-renderChunk :: V.Vector Block -> V3 Int -> M.Map (V3 Int) Chunk -> (V.Vector Block, V3 Int, [(V3 Float, V2 Float)])
+-- This is pretty ugly
+renderChunk :: V.Vector Block -> V3 Int -> M.Map (V3 Int) Chunk -> [(V3 Float, V2 Float)]
 renderChunk chunk pos world =
   let 
     !vertices = force $ do
@@ -186,37 +64,21 @@ renderChunk chunk pos world =
       (v',face) <- zip (map (+v) [V3 0 0 1,V3 0 0 (-1),V3 0 1 0,V3 0 (-1) 0, V3 1 0 0, V3 (-1) 0 0]) 
                        [northFace, southFace, topFace, bottomFace, eastFace, westFace]
       if (not (all (\x -> x >= 0 && x < chunkSize) v')) then
-        case ( 
-          if v' ^. _x < 0 then
-            (v' & _x +~ chunkSize, M.lookup (pos & _x -~ 1) world)
-          else if v' ^. _x >= chunkSize then
-            (v' & _x -~ chunkSize, M.lookup (pos & _x +~ 1) world)
-          else if v' ^. _y < 0 then
-            (v' & _y +~ chunkSize, M.lookup (pos & _y -~ 1) world)
-          else if v' ^. _y >= chunkSize then
-            (v' & _y -~ chunkSize, M.lookup (pos & _y +~ 1) world)
-          else if v' ^. _z < 0 then
-            (v' & _z +~ chunkSize, M.lookup (pos & _z -~ 1) world)
-          else if v' ^. _z >= chunkSize then
-            (v' & _z -~ chunkSize, M.lookup (pos & _z +~ 1) world)
-          else 
-            error "This is impossible") of
+        case let f :: Lens' (V3 Int) Int -> (V3 Int,Maybe Chunk) -> (V3 Int,Maybe Chunk)
+                 f dir rest = 
+                   if v' ^. dir < 0 then
+                     (v' & dir +~ chunkSize, M.lookup (pos & dir -~ 1) world)
+                   else if v' ^. dir >= chunkSize then
+                     (v' & dir -~ chunkSize, M.lookup (pos & dir +~ 1) world)
+                   else rest
+             in f _x (f _y (f _z (error "this is impossible")))
+             of
           (_,Nothing) -> []
           (v'',Just chunk') -> guard $ (chunk' ^. vec) V.! toPos v'' == Air
       else 
         guard $ chunk V.! toPos v' == Air 
       face & traverse . _1 +~ fmap fromIntegral v
-  in (chunk,pos,vertices)
-
--- Code
-
-chunkSize :: Int
-chunkSize = 16
-
-renderDistance :: Int
-renderDistance = 5
-
-data Program = Program GL.Program GL.AttribLocation GL.BufferObject
+  in vertices
 
 toPos (V3 x y z) = x + y * xMax + z * xMax * yMax
   where
@@ -229,12 +91,6 @@ fromPos n = V3 x y z
     (z,y) = quotRem n' yMax
     xMax = chunkSize
     yMax = chunkSize
-
-generatingF :: V3 Int -> Block
-generatingF (V3 x y z)
-  | (x-8) ^ 2 + y ^ 2 + (z-8) ^ 2 < 128 = Stone
-  | y < 2 = Stone
-  | otherwise = Air
 
 gameLoop :: IO ()
 gameLoop = withWindow 1280 720 "Jaro's minecraft ripoff [WIP]" $ \win -> do
@@ -385,15 +241,15 @@ gameLoop = withWindow 1280 720 "Jaro's minecraft ripoff [WIP]" $ \win -> do
                     do
                       let vec = (V.generate (chunkSize ^ 3) $ generatingF . (+ (16 *^ curC)) . fromPos)
                       worldVal <- readIORef world
-                      atomically . writeTChan chunkChan $ renderChunk vec curC worldVal
+                      atomically . writeTChan chunkChan $ (vec, curC, renderChunk vec curC worldVal)
                       atomicModifyIORef world $ \x -> (M.insert curC (Chunk vec (Left undefined) (return ())) x, ())
                     worldVal <- readIORef world
                     sequence_ $ do
                       v' <- [curC & dir +~ mag | dir <- [_x,_y,_z], mag <- [1,-1]]
                       chunk <- maybeToList (M.lookup v' worldVal)
-                      return $ atomically $ writeTChan chunkChan $ renderChunk (chunk ^. vec) v' worldVal
+                      return $ atomically $ writeTChan chunkChan $ (chunk ^. vec,v',renderChunk (chunk ^. vec) v' worldVal)
               r = renderDistance 
-            mapM render [curChunk + V3 x y z | x <- [-r..r], y <- [-r..r], z <- [-r..r], x^2 + y^2 + z^2 <= r^2]
+            mapM render [curChunk + V3 x y z | x <- [-r..r], y <- [-r..r], z <- [-r..r], x^2 + z^2 <= r^2]
 
           -- Swap the buffers (aka draw the final image to the screen)
           lift $ GLFW.swapBuffers win
