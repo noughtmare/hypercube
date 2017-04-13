@@ -89,6 +89,17 @@ fromPos n = V3 x y z
     xMax = chunkSize
     yMax = chunkSize
 
+switchCursor :: GLFW.Window -> IO ()
+switchCursor win = do
+  currentMode <- GLFW.getCursorInputMode win 
+  GLFW.setCursorInputMode win $ case currentMode of
+      GLFW.CursorInputMode'Normal -> GLFW.CursorInputMode'Disabled
+      _ -> GLFW.CursorInputMode'Normal
+
+keyCallback :: GLFW.Window -> GLFW.Key -> Int -> GLFW.KeyState -> GLFW.ModifierKeys -> IO ()
+keyCallback win GLFW.Key'R _ GLFW.KeyState'Pressed _ = switchCursor win
+keyCallback _ _ _ _ _ = return ()
+
 gameLoop :: IO ()
 gameLoop = withWindow 1280 720 "Jaro's minecraft ripoff [WIP]" $ \win -> do
   -- Disable the cursor
@@ -134,7 +145,9 @@ gameLoop = withWindow 1280 720 "Jaro's minecraft ripoff [WIP]" $ \win -> do
     lift $ GL.cullFace GL.$= Just GL.Back
 
     lift $ GL.polygonMode GL.$= (GL.Fill, GL.Point)
-
+  
+    lift $ GLFW.setKeyCallback win (Just keyCallback)
+  
     let 
       loop :: StateT Game IO ()
       loop = do
@@ -155,8 +168,11 @@ gameLoop = withWindow 1280 720 "Jaro's minecraft ripoff [WIP]" $ \win -> do
             let handle :: MonadIO m => (GLFW.KeyState -> Bool) -> GLFW.Key -> m () -> m ()
                 handle f key action = f <$> liftIO (GLFW.getKey win key) >>= \x -> when x action
 
+                isDown GLFW.KeyState'Pressed = True
+                isDown GLFW.KeyState'Repeating = True
+                isDown _ = False
+                
                 isPressed GLFW.KeyState'Pressed = True
-                isPressed GLFW.KeyState'Repeating = True
                 isPressed _ = False
 
             moveAmount <- (deltaTime *) <$> use (cam . speed)
@@ -169,15 +185,15 @@ gameLoop = withWindow 1280 720 "Jaro's minecraft ripoff [WIP]" $ \win -> do
               right   = moveAmount *^ rotate (axisAngle (V3 0 1 0) camJaw) (V3 1 0 0)
               up      = moveAmount *^ V3 0 1 0
 
-            handle isPressed GLFW.Key'W         $ cam . camPos += forward
-            handle isPressed GLFW.Key'A         $ cam . camPos -= right
-            handle isPressed GLFW.Key'S         $ cam . camPos -= forward
-            handle isPressed GLFW.Key'D         $ cam . camPos += right
-            handle isPressed GLFW.Key'Space     $ cam . camPos += up
-            handle isPressed GLFW.Key'LeftShift $ cam . camPos -= up
-            handle isPressed GLFW.Key'R         $ lift $ GLFW.setCursorInputMode win GLFW.CursorInputMode'Normal
+            handle isDown GLFW.Key'W         $ cam . camPos += forward
+            handle isDown GLFW.Key'A         $ cam . camPos -= right
+            handle isDown GLFW.Key'S         $ cam . camPos -= forward
+            handle isDown GLFW.Key'D         $ cam . camPos += right
+            handle isDown GLFW.Key'Space     $ cam . camPos += up
+            handle isDown GLFW.Key'LeftShift $ cam . camPos -= up
+            --handle isPressed GLFW.Key'R      $ lift $ switchCursor win --lift $ GLFW.setCursorInputMode win GLFW.CursorInputMode'Normal
 
-            handle isPressed GLFW.Key'LeftControl  $ cam . speed .= 50
+            handle isDown GLFW.Key'LeftControl  $ cam . speed .= 50
             handle (not . isPressed) GLFW.Key'LeftControl $ cam . speed .= 5
 
             lift $ handle isPressed GLFW.Key'Escape $ GLFW.setWindowShouldClose win True
