@@ -165,6 +165,9 @@ data Chunk = Chunk
   , _draw :: IO ()
   }
 
+instance Show Chunk where
+  show _ = "chunk"
+
 data Block
   = Stone
   | Air
@@ -293,7 +296,7 @@ gameLoop = withWindow 1280 720 "Jaro's minecraft ripoff [WIP]" $ \win -> do
             lastFrame .= currentFrame
             return deltaTime
 
-          lift $ print $ 1/deltaTime
+          -- lift $ print $ 1/deltaTime
 
           do -- Keyboard input
             let handle :: MonadIO m => (GLFW.KeyState -> Bool) -> GLFW.Key -> m () -> m ()
@@ -359,9 +362,12 @@ gameLoop = withWindow 1280 720 "Jaro's minecraft ripoff [WIP]" $ \win -> do
           do -- Draw the chunks
             lift (atomically (tryReadTChan chunkChan)) >>= \case
               Just (c,curC,vertices) -> do
+                world <- use world
+                worldVal <- lift $ readIORef world
+                --lift $ print (curC,worldVal)
                 vao <- lift $ toVAO vertices
                 let chunk = (Chunk c (Right vao) (GL.drawArrays GL.Triangles 0 (fromIntegral $ length vertices)))
-                use world >>= \world -> lift (atomicModifyIORef world (\x -> (M.insert curC chunk x, ())))
+                lift (atomicModifyIORef world (\x -> (M.insert curC chunk x, ())))
               Nothing -> return ()
 
             curChunk <- fmap (floor . (/ fromIntegral chunkSize)) <$> use (cam . camPos)
@@ -375,12 +381,17 @@ gameLoop = withWindow 1280 720 "Jaro's minecraft ripoff [WIP]" $ \win -> do
                       GL.uniform modelLoc GL.$= model
                       f
                   Just (Chunk _ (Left _) _) -> return ()
-                  Nothing -> use world >>= \world -> lift (void $ forkIO $ do
-                    let vec = (V.generate (chunkSize ^ 3) $ generatingF . (+ (16 *^ curC)) . fromPos)
+                  Nothing -> use world >>= \world -> lift $ void $ forkIO $ do
+                    do
+                      let vec = (V.generate (chunkSize ^ 3) $ generatingF . (+ (16 *^ curC)) . fromPos)
+                      worldVal <- readIORef world
+                      atomically . writeTChan chunkChan $ renderChunk vec curC worldVal
+                      atomicModifyIORef world $ \x -> (M.insert curC (Chunk vec (Left undefined) (return ())) x, ())
                     worldVal <- readIORef world
-                    atomically . writeTChan chunkChan $ renderChunk vec curC worldVal
-                    (atomicModifyIORef world (\x -> (M.insert curC (Chunk vec (Left undefined) (return ())) x, ()))))
-                    -- updateNeighbors [
+                    sequence_ $ do
+                      v' <- [curC & dir +~ mag | dir <- [_x,_y,_z], mag <- [1,-1]]
+                      chunk <- maybeToList (M.lookup v' worldVal)
+                      return $ atomically $ writeTChan chunkChan $ renderChunk (chunk ^. vec) v' worldVal
               r = renderDistance 
             mapM render [curChunk + V3 x y z | x <- [-r..r], y <- [-r..r], z <- [-r..r], x^2 + y^2 + z^2 <= r^2]
 
