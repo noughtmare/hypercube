@@ -39,10 +39,10 @@ toGLmatrix = GL.newMatrix GL.RowMajor . (toList >=> toList)
 -- rotation :: Float -> Float -> Float -> Float -> M44 Float
 -- rotation angle x y z = identity & _m33 .~ fromQuaternion (Quaternion (cos (angle/2)) ((sin (angle/2) *) <$> normalize (V3 x y z)))
 
-toVAO :: [(V3 Float, V2 Float)] -- VBO data
+toVAO :: [(V3 Float, V2 Float, Float)] -- VBO data
       -> IO GL.VertexArrayObject -- VAO result
 toVAO vboData = U.makeVAO $ do
-  vbo <- U.makeBuffer GL.ArrayBuffer $ vboData >>= uncurry (++) . (toList *** toList)
+  vbo <- U.makeBuffer GL.ArrayBuffer $ vboData >>= \(V3 a b c, V2 d e, f) -> [a,b,c,d,e,f]
   GL.bindBuffer GL.ArrayBuffer GL.$= Just vbo
 
   let f = fromIntegral $ sizeOf (undefined :: Float)
@@ -51,11 +51,12 @@ toVAO vboData = U.makeVAO $ do
         GL.vertexAttribPointer attrib GL.$=
           (GL.ToFloat, GL.VertexArrayDescriptor size GL.Float totSize (U.offsetPtr (fromIntegral offset)))
         GL.vertexAttribArray attrib GL.$= GL.Enabled
-  g 0 3 (5 * f) (0 * f)
-  g 1 2 (5 * f) (3 * f)
+  g 0 3 (6 * f) (0 * f)
+  g 1 2 (6 * f) (3 * f)
+  g 2 1 (6 * f) (5 * f)
 
 -- This is pretty ugly
-renderChunk :: V.Vector Block -> V3 Int -> M.Map (V3 Int) Chunk -> [(V3 Float, V2 Float)]
+renderChunk :: V.Vector Block -> V3 Int -> M.Map (V3 Int) Chunk -> [(V3 Float, V2 Float, Float)]
 renderChunk chunk pos world = force $ do
   v <- V3 <$> [0..chunkSize - 1] <*> [0..chunkSize - 1] <*> [0..chunkSize - 1]
   guard $ chunk V.! toPos v /= Air
@@ -191,7 +192,6 @@ gameLoop = withWindow 1280 720 "Jaro's minecraft ripoff [WIP]" $ \win -> do
             handle isDown GLFW.Key'D         $ cam . camPos += right
             handle isDown GLFW.Key'Space     $ cam . camPos += up
             handle isDown GLFW.Key'LeftShift $ cam . camPos -= up
-            --handle isPressed GLFW.Key'R      $ lift $ switchCursor win --lift $ GLFW.setCursorInputMode win GLFW.CursorInputMode'Normal
 
             handle isDown GLFW.Key'LeftControl  $ cam . speed .= 50
             handle (not . isPressed) GLFW.Key'LeftControl $ cam . speed .= 5
