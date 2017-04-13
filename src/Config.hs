@@ -7,7 +7,7 @@ chunkSize :: Int
 chunkSize = 16
 
 renderDistance :: Int
-renderDistance = 4
+renderDistance = 5
 
 generatingF :: V3 Int -> Block
 generatingF (V3 x y z)

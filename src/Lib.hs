@@ -56,29 +56,26 @@ toVAO vboData = U.makeVAO $ do
 
 -- This is pretty ugly
 renderChunk :: V.Vector Block -> V3 Int -> M.Map (V3 Int) Chunk -> [(V3 Float, V2 Float)]
-renderChunk chunk pos world =
-  let 
-    !vertices = force $ do
-      v <- V3 <$> [0..chunkSize - 1] <*> [0..chunkSize - 1] <*> [0..chunkSize - 1]
-      guard $ chunk V.! toPos v /= Air
-      (v',face) <- zip (map (+v) [V3 0 0 1,V3 0 0 (-1),V3 0 1 0,V3 0 (-1) 0, V3 1 0 0, V3 (-1) 0 0]) 
-                       [northFace, southFace, topFace, bottomFace, eastFace, westFace]
-      if (not (all (\x -> x >= 0 && x < chunkSize) v')) then
-        case let f :: Lens' (V3 Int) Int -> (V3 Int,Maybe Chunk) -> (V3 Int,Maybe Chunk)
-                 f dir rest = 
-                   if v' ^. dir < 0 then
-                     (v' & dir +~ chunkSize, M.lookup (pos & dir -~ 1) world)
-                   else if v' ^. dir >= chunkSize then
-                     (v' & dir -~ chunkSize, M.lookup (pos & dir +~ 1) world)
-                   else rest
-             in f _x (f _y (f _z (error "this is impossible")))
-             of
-          (_,Nothing) -> []
-          (v'',Just chunk') -> guard $ (chunk' ^. vec) V.! toPos v'' == Air
-      else 
-        guard $ chunk V.! toPos v' == Air 
-      face & traverse . _1 +~ fmap fromIntegral v
-  in vertices
+renderChunk chunk pos world = force $ do
+  v <- V3 <$> [0..chunkSize - 1] <*> [0..chunkSize - 1] <*> [0..chunkSize - 1]
+  guard $ chunk V.! toPos v /= Air
+  (v',face) <- zip [v & dir +~ mag | dir <- [_z,_y,_x], mag <- [1,-1]]
+                   [northFace, southFace, topFace, bottomFace, eastFace, westFace]
+  if (not (all (\x -> x >= 0 && x < chunkSize) v')) then
+    case let f :: Lens' (V3 Int) Int -> (V3 Int,Maybe Chunk) -> (V3 Int,Maybe Chunk)
+             f dir rest =
+               if v' ^. dir < 0 then
+                 (v' & dir +~ chunkSize, M.lookup (pos & dir -~ 1) world)
+               else if v' ^. dir >= chunkSize then
+                 (v' & dir -~ chunkSize, M.lookup (pos & dir +~ 1) world)
+               else rest
+         in f _x (f _y (f _z (error "this is impossible")))
+         of
+      (_,Nothing) -> []
+      (v'',Just chunk') -> guard $ (chunk' ^. vec) V.! toPos v'' == Air
+  else
+    guard $ chunk V.! toPos v' == Air
+  face & traverse . _1 +~ fmap fromIntegral v
 
 toPos (V3 x y z) = x + y * xMax + z * xMax * yMax
   where
@@ -233,13 +230,13 @@ gameLoop = withWindow 1280 720 "Jaro's minecraft ripoff [WIP]" $ \win -> do
                 case M.lookup curC m of
                   Just (Chunk _ (Right vao) f) -> lift $ do
                     U.withVAO vao $ do
-                      model <- toGLmatrix (identity & translation +~ (16 *^ (fmap fromIntegral curC)))
+                      model <- toGLmatrix (identity & translation +~ (realToFrac chunkSize *^ (fmap fromIntegral curC)))
                       GL.uniform modelLoc GL.$= model
                       f
                   Just (Chunk _ (Left _) _) -> return ()
                   Nothing -> use world >>= \world -> lift $ void $ forkIO $ do
                     do
-                      let vec = (V.generate (chunkSize ^ 3) $ generatingF . (+ (16 *^ curC)) . fromPos)
+                      let vec = (V.generate (chunkSize ^ 3) $ generatingF . (+ (chunkSize *^ curC)) . fromPos)
                       worldVal <- readIORef world
                       atomically . writeTChan chunkChan $ (vec, curC, renderChunk vec curC worldVal)
                       atomicModifyIORef world $ \x -> (M.insert curC (Chunk vec (Left undefined) (return ())) x, ())
@@ -249,7 +246,7 @@ gameLoop = withWindow 1280 720 "Jaro's minecraft ripoff [WIP]" $ \win -> do
                       chunk <- maybeToList (M.lookup v' worldVal)
                       return $ atomically $ writeTChan chunkChan $ (chunk ^. vec,v',renderChunk (chunk ^. vec) v' worldVal)
               r = renderDistance 
-            mapM render [curChunk + V3 x y z | x <- [-r..r], y <- [-r..r], z <- [-r..r], x^2 + z^2 <= r^2]
+            mapM render [curChunk + V3 x y z | x <- [-r..r], y <- [-2..2], z <- [-r..r], x^2 + z^2 <= r^2]
 
           -- Swap the buffers (aka draw the final image to the screen)
           lift $ GLFW.swapBuffers win
