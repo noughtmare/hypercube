@@ -122,7 +122,7 @@ gameLoop = withWindow 1280 720 "Jaro's minecraft ripoff [WIP]" $ \win -> do
       U.linkShaderProgram [vs, fs]
 
     lift $ do -- Load texture & generate mipmaps
-      (Right texture) <- U.readTexture "stone.png"
+      (Right texture) <- U.readTexture "img/stone.png"
       GL.textureBinding GL.Texture2D GL.$= Just texture
       GL.textureFilter GL.Texture2D GL.$= ((GL.Nearest,Nothing),GL.Nearest)
     
