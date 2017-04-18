@@ -1,4 +1,4 @@
--- This file has been generated from package.yaml by hpack version 0.15.0.
+-- This file has been generated from package.yaml by hpack version 0.17.0.
 --
 -- see: https://github.com/sol/hpack
 
@@ -17,16 +17,13 @@ cabal-version:  >= 1.10
 extra-source-files:
     README.md
 
-executable hypercube
-  main-is: Main.hs
+library
   hs-source-dirs:
       src
-  ghc-options: -O2 -threaded -Wall
+  ghc-options: -O2
   build-depends:
       base >= 4.7 && < 5
-    , GLFW-b
     , mtl
-    , data-default
     , lens
     , stm
     , OpenGL
@@ -34,10 +31,40 @@ executable hypercube
     , vector
     , containers
     , deepseq
+    , thyme
+    , vector-space
+    , GLFW-b
+    , bytestring
     , GLUtil
-  other-modules:
+  exposed-modules:
+      Chunk
       Config
       Faces
       Lib
+      PureChunk
       Types
+      Util
+  default-language: Haskell2010
+
+executable hypercube
+  main-is: Main.hs
+  hs-source-dirs:
+      app
+  ghc-options: -O2 -threaded
+  build-depends:
+      base >= 4.7 && < 5
+    , mtl
+    , lens
+    , stm
+    , OpenGL
+    , linear
+    , vector
+    , containers
+    , deepseq
+    , thyme
+    , vector-space
+    , GLFW-b
+    , bytestring
+    , GLUtil
+    , hypercube
   default-language: Haskell2010

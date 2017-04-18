@@ -9,13 +9,12 @@ category:            Web
 extra-source-files:
 - README.md
 
-ghc-options: -O2 -threaded -Wall
+ghc-options:
+ - -O2
 
 dependencies:
   - base >= 4.7 && < 5
-  - GLFW-b
   - mtl
-  - data-default
   - lens
   - stm
   - OpenGL
@@ -23,10 +22,18 @@ dependencies:
   - vector
   - containers
   - deepseq
+  - thyme
+  - vector-space
+  - GLFW-b
+  - bytestring
   - GLUtil
 
+library:
+  source-dirs: src
 
 executables:
   hypercube:
-    source-dirs:      src
+    source-dirs:      app
     main:             Main.hs
+    dependencies:     hypercube
+    ghc-options:      -threaded

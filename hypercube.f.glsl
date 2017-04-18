@@ -1,11 +1,14 @@
 #version 330 core
-in vec3 ourColor;
-in vec2 TexCoord;
+
+in vec4 pos;
 
 out vec4 color;
 
-uniform sampler2D ourTexture;
+uniform sampler2D tex;
 
-void main(void) {
-  color = texture(ourTexture,TexCoord) * vec4(ourColor, 1.0f);
+void main() {
+  if (pos.w < 0)
+    color = texture(tex, vec2((fract(pos.x) + pos.w) / 16.0, 1 - pos.z));
+  else
+    color = texture(tex, vec2((fract(pos.x + pos.z) + pos.w) / 16.0, 1 - pos.y));
 }

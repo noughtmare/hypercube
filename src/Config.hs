@@ -7,10 +7,10 @@ chunkSize :: Int
 chunkSize = 16
 
 renderDistance :: Int
-renderDistance = 5
+renderDistance = 7
 
 generatingF :: V3 Int -> Block
 generatingF (V3 x y z)
-  | y < ceiling (10 * sin (fromIntegral x / 10) * cos (fromIntegral z / 10)) = Stone
+  | fromIntegral y < 8 * sin (fromIntegral x / 16 * pi) * cos (fromIntegral z / 16 * pi) = Stone
   | otherwise = Air
 
