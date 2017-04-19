@@ -81,27 +81,11 @@ updateChunk = do
   var <- use chunkIsLoaded
   when (not isChanging) $ do
     chunkChanging .= True
-    blk  <- use chunkBlk
-    chan <- use chunkChan
-    vbo  <- use chunkVbo
-    pos <- use chunkPos
-    lift $ void $ forkIO $ do
-      let
-        vertices = force $ do
-          (p,_) <- V.filter ((/= Air) . snd) $ V.indexed blk
-          let v = fromPos p
-          (v',face) <- V.fromList $ zip
-                         [ v & dir +~ mag | dir <- [_z,_y,_x], mag <- [1,-1]]
-                         [ northFace & traverse . _w +~ 1
-                         , southFace & traverse . _w +~ 1
-                         , topFace
-                         , bottomFace
-                         , eastFace & traverse . _w +~ 1
-                         , westFace & traverse . _w +~ 1
-                         ]
-          guard $ all (\x -> x >= 0 && x < chunkSize) v' && blk V.! (toPos v') == Air || generatingF (v' + chunkSize *^ pos) == Air
-          face & traverse +~ (0 & _xyz .~ fmap fromIntegral v)
-      vertices `seq` atomically $ writeTChan chan (vertices,vbo,var)
+    !blk  <- use chunkBlk
+    !chan <- use chunkChan
+    !vbo  <- use chunkVbo
+    !pos  <- use chunkPos
+    lift $ atomically $ writeTChan chan (extractSurface blk pos,vbo,var)
 
   mayTemp <- lift $ tryTakeMVar var
   case mayTemp of
@@ -110,6 +94,25 @@ updateChunk = do
       chunkChanged .= False
       chunkChanging .= False
       chunkElements .= l
+
+extractSurface :: V.Vector Block -> V3 Int -> V.Vector (V4 Word8)
+extractSurface blk pos = do
+  (p,_) <- V.filter ((/= Air) . snd) $ V.indexed blk
+  let v = fromPos p
+  (v',face) <- V.fromList $ zip
+                 [ v & dir +~ mag | dir <- [_z,_y,_x], mag <- [1,-1]]
+                 [ northFace & traverse . _w +~ 1
+                 , southFace & traverse . _w +~ 1
+                 , topFace
+                 , bottomFace
+                 , eastFace & traverse . _w +~ 1
+                 , westFace & traverse . _w +~ 1
+                 ]
+  if all (\x -> x >= 0 && x < chunkSize) v'
+  then guard $ blk V.! (toPos v') == Air
+  else guard $ generatingF (v' + chunkSize *^ pos) == Air -- hack
+  face & traverse +~ (0 & _xyz .~ fmap fromIntegral v)
+
 
 renderChunk :: Chunk -> UniformLocation -> IO Chunk
 renderChunk c modelLoc = flip execStateT c $ do

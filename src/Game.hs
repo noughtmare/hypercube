@@ -154,6 +154,24 @@ mouse win = do
   cam . jaw   += cursorDelta ^. _x
   cam . pitch += cursorDelta ^. _y
 
+draw :: GL.UniformLocation -> TChan (V.Vector (V4 Word8), GL.BufferObject, MVar Int) -> StateT Game IO ()
+draw modelLoc chunkChan = do
+  m <- use world
+  let
+    render v =
+      case M.lookup v m of
+        Just c -> do
+          c' <- lift $ renderChunk c modelLoc
+          world %= M.insert v c'
+        Nothing -> do
+          c <- lift $ newChunk v chunkChan
+          c' <- lift $ renderChunk c modelLoc
+          world %= M.insert v c'
+
+  playerPos <- fmap (\x -> floor (x / fromIntegral chunkSize)) <$> use (cam . camPos)
+  let r = renderDistance
+  mapM_ render [playerPos + V3 x y z | x <- [-r..r], y <- [-r..r], z <- [-r..r], x^2 + z^2 <= r^2]
+
 mainLoop :: GLFW.Window -> TChan (V.Vector (V4 Word8), GL.BufferObject, MVar Int) -> [GL.UniformLocation] -> StateT Game IO ()
 mainLoop win chunkChan [viewLoc,projLoc,modelLoc] = do
   shouldClose <- lift $ GLFW.windowShouldClose win
@@ -192,41 +210,28 @@ mainLoop win chunkChan [viewLoc,projLoc,modelLoc] = do
         perspective (pi / 4) (fromIntegral width / fromIntegral height) 0.1 1000
       GL.uniform projLoc GL.$= projMat
 
-    do -- Draw the chunks
+    do
+      deadLine <- lift $ (+ 0.001) . fromJust <$> GLFW.getTime
       let
-        loadOne = atomically (tryReadTChan chunkChan) >>= \case
-          Just (vertices, vbo, var) -> do
-            if (V.length vertices > 0) then do
-              GL.bindBuffer GL.ArrayBuffer GL.$= Just vbo
-              SV.unsafeWith (SV.convert vertices) $ \ptr ->
-                GL.bufferData GL.ArrayBuffer GL.$= (fromIntegral (V.length vertices * 4),ptr,GL.StaticDraw)
+        loadVbos = do
+          atomically (tryReadTChan chunkChan) >>= \case
+            Just (vertices, vbo, var) -> do
+              if (V.length vertices > 0) then do
+                GL.bindBuffer GL.ArrayBuffer GL.$= Just vbo
+                SV.unsafeWith (SV.convert vertices) $ \ptr ->
+                  GL.bufferData GL.ArrayBuffer GL.$= (fromIntegral (V.length vertices * 4),ptr,GL.StaticDraw)
+                putMVar var (V.length vertices)
+              else do
+                putMVar var 0
+            Nothing -> return ()
+          now <- fromJust <$> GLFW.getTime
+          when (now < deadLine) $ loadVbos
+      lift $ loadVbos
 
-              putMVar var (V.length vertices)
-            else do
-              putMVar var 0
-          Nothing -> return ()
-      lift loadOne
+    draw modelLoc chunkChan
 
-      m <- use world
-      let
-        render v =
-          case M.lookup v m of
-            Just c -> do
-              c' <- lift $ renderChunk c modelLoc
-              world %= M.insert v c'
-            Nothing -> do
-              c <- lift $ newChunk v chunkChan
-              c' <- lift $ renderChunk c modelLoc
-              world %= M.insert v c'
-
-      playerPos <- fmap (\x -> floor (x / fromIntegral chunkSize)) <$> use (cam . camPos)
-      let r = renderDistance
-      mapM render [playerPos + V3 x y z | x <- [-r..r], y <- [-r..r], z <- [-r..r], x^2 + z^2 <= r^2]
-
-    -- Swap the buffers (aka draw the final image to the screen)
     lift $ GLFW.swapBuffers win
 
-    -- Recurse
     mainLoop win chunkChan [viewLoc,projLoc,modelLoc]
 
 withWindow :: Int -> Int -> String -> (GLFW.Window -> IO ()) -> IO ()
