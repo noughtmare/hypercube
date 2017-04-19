@@ -21,3 +21,7 @@ cabal.project.local
 *.swp
 *.swo
 *.bat
+*.prof.html
+*.prof
+*.pdf
+*.ps

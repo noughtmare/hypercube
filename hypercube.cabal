@@ -40,7 +40,7 @@ library
       Chunk
       Config
       Faces
-      Lib
+      Game
       PureChunk
       Types
       Util

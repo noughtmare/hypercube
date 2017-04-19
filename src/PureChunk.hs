@@ -1,6 +1,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE Strict #-}
 
 module PureChunk
   ( newChunk
@@ -80,24 +81,26 @@ updateChunk = do
   var <- use pchunkIsLoaded
   when (not isChanging) $ do
     pchunkChanging .= True
-    blk <- use pchunkBlk
+    blk  <- use pchunkBlk
     chan <- use pchunkChan
-    vbo <- use pchunkVbo
+    vbo  <- use pchunkVbo
+    pos <- use pchunkPos
     lift $ void $ forkIO $ do
-      let vertices = force $ do
-            (p,_) <- V.filter ((/= Air) . snd) $ V.indexed blk
-            let v = fromPos p
-            (v',face) <- V.fromList $ zip
-                           [ v & dir +~ mag | dir <- [_z,_y,_x], mag <- [1,-1]]
-                           [ northFace & traverse . _w +~ 1
-                           , southFace & traverse . _w +~ 1
-                           , topFace
-                           , bottomFace
-                           , eastFace & traverse . _w +~ 1
-                           , westFace & traverse . _w +~ 1
-                           ]
-            guard $ all (\x -> x >= 0 && x < chunkSize) v' && blk V.! (toPos v') == Air
-            face & traverse +~ (0 & _xyz .~ fmap fromIntegral v)
+      let
+        vertices = force $ do
+          (p,_) <- V.filter ((/= Air) . snd) $ V.indexed blk
+          let v = fromPos p
+          (v',face) <- V.fromList $ zip
+                         [ v & dir +~ mag | dir <- [_z,_y,_x], mag <- [1,-1]]
+                         [ northFace & traverse . _w +~ 1
+                         , southFace & traverse . _w +~ 1
+                         , topFace
+                         , bottomFace
+                         , eastFace & traverse . _w +~ 1
+                         , westFace & traverse . _w +~ 1
+                         ]
+          guard $ all (\x -> x >= 0 && x < chunkSize) v' && blk V.! (toPos v') == Air || generatingF (v' + chunkSize *^ pos) == Air
+          face & traverse +~ (0 & _xyz .~ fmap fromIntegral v)
       vertices `seq` atomically $ writeTChan chan (vertices,vbo,var)
 
   mayTemp <- lift $ tryTakeMVar var
@@ -114,22 +117,16 @@ renderChunk c modelLoc = flip execStateT c $ do
   when isChanged $ updateChunk
   n <- use pchunkElements
   when (n /= 0) $ do
-    use pchunkVbo >>= setArrayBuffer
+    use pchunkVbo >>= (bindBuffer ArrayBuffer $=) . Just
     pos <- use pchunkPos
 
     lift $ do
-      cullFace $= Just Back
-      depthFunc $= Just Less
+      model <- toGLmatrix $ identity & translation +~
+        (fromIntegral chunkSize *^ (fmap fromIntegral pos))
+      uniform modelLoc $= model
 
       vertexAttribPointer (AttribLocation 0) $=
         (ToFloat, VertexArrayDescriptor 4 Byte 0 (intPtrToPtr 0))
       vertexAttribArray (AttribLocation 0) $= Enabled
 
-      model <- toGLmatrix $ identity & translation +~
-        (fromIntegral chunkSize *^ (fmap fromIntegral pos))
-      uniform modelLoc $= model
-
       drawArrays Triangles 0 $ fromIntegral n
-
-setArrayBuffer = (bindBuffer ArrayBuffer $=) . Just
-
