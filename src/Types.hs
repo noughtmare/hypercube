@@ -7,7 +7,6 @@ import qualified Graphics.Rendering.OpenGL as GL
 import qualified Data.Vector as V
 import Data.Vector.Mutable (IOVector)
 import qualified Data.Map as M
-import Data.IORef
 import Control.Arrow
 import Control.Concurrent.MVar
 import Data.Word (Word8)
@@ -15,10 +14,10 @@ import Control.Concurrent.STM.TChan
 
 data Camera
   = Camera
-  { _camPos :: !(V3 Float)
-  , _jaw :: !Float
-  , _pitch :: !Float
-  , _speed :: !Float
+  { _camPos      :: !(V3 Float)
+  , _jaw         :: !Float
+  , _pitch       :: !Float
+  , _speed       :: !Float
   , _sensitivity :: !Float
   } deriving (Show)
 
@@ -46,11 +45,8 @@ data Game
   { _cam       :: !Camera
   , _lastFrame :: !Float
   , _cursorPos :: !(V2 Float)
-  , _world     :: !(IORef (M.Map (V3 Int) PureChunk))
+  , _world     :: !(M.Map (V3 Int) Chunk)
   }
-
-instance Show Chunk where
-  show _ = "chunk"
 
 data Block
   = Air
@@ -59,25 +55,15 @@ data Block
 
 data Chunk
   = Chunk
-  { chunkBlk      :: !(IOVector Block)
-  , chunkVbo      :: !GL.BufferObject
-  , chunkElements :: !(IORef Int)
-  , chunkChanged  :: !(IORef Bool)
-  , chunkPos      :: !(V3 Int)
-  , chunkWorld    :: !(IORef (M.Map (V3 Int) Chunk))
+  { _chunkBlk      :: !(V.Vector Block)
+  , _chunkVbo      :: !GL.BufferObject
+  , _chunkElements :: !Int
+  , _chunkChanged  :: !Bool
+  , _chunkPos      :: !(V3 Int)
+  , _chunkChanging :: !Bool
+  , _chunkChan     :: !(TChan (V.Vector (V4 Word8), GL.BufferObject, MVar Int))
+  , _chunkIsLoaded :: !(MVar Int)
   }
 
-data PureChunk
-  = PureChunk
-  { _pchunkBlk      :: !(V.Vector Block)
-  , _pchunkVbo      :: !GL.BufferObject
-  , _pchunkElements :: !Int
-  , _pchunkChanged  :: !Bool
-  , _pchunkPos      :: !(V3 Int)
-  , _pchunkChanging :: !Bool
-  , _pchunkChan     :: !(TChan (V.Vector (V4 Word8), GL.BufferObject, MVar Int))
-  , _pchunkIsLoaded :: !(MVar Int)
-  }
-
-makeLenses ''PureChunk
+makeLenses ''Chunk
 makeLenses ''Game

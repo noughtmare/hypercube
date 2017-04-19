@@ -7,7 +7,6 @@
 module Game where
 
 import Chunk
-import qualified PureChunk as P
 import Types
 import Faces
 import Config
@@ -27,7 +26,6 @@ import Graphics.UI.GLFW as GLFW
 import Foreign.Storable (sizeOf)
 import Linear
 import Data.Foldable
-import Data.IORef
 import Control.Arrow
 import qualified Data.Vector as V
 import qualified Data.Vector.Storable as SV
@@ -62,7 +60,7 @@ start = withWindow 1280 720 "Jaro's minecraft ripoff [WIP]" $ \win -> do
   game <- Game (Camera (V3 8 15 8) 0 0 5 0.001)
            <$> (realToFrac . fromJust <$> GLFW.getTime)
            <*> (fmap realToFrac . uncurry V2 <$> GLFW.getCursorPos win)
-           <*> (newIORef M.empty)
+           <*> (pure M.empty)
 
   void $ flip runStateT game $ do
     -- vsync
@@ -209,22 +207,21 @@ mainLoop win chunkChan [viewLoc,projLoc,modelLoc] = do
           Nothing -> return ()
       lift loadOne
 
-      w <- use world
-      m <- lift $ readIORef w
+      m <- use world
       let
         render v =
           case M.lookup v m of
             Just c -> do
-              c' <- P.renderChunk c modelLoc
-              atomicModifyIORef w (\m' -> (M.insert v c' m', ()))
+              c' <- lift $ renderChunk c modelLoc
+              world %= M.insert v c'
             Nothing -> do
-              c <- P.newChunk v chunkChan
-              --c' <- P.renderChunk c modelLoc
-              atomicModifyIORef w (\m' -> (M.insert v c m', ()))
+              c <- lift $ newChunk v chunkChan
+              c' <- lift $ renderChunk c modelLoc
+              world %= M.insert v c'
 
       playerPos <- fmap (\x -> floor (x / fromIntegral chunkSize)) <$> use (cam . camPos)
       let r = renderDistance
-      lift $ mapM render [playerPos + V3 x y z | x <- [-r..r], y <- [-r..r], z <- [-r..r], x^2 + z^2 <= r^2]
+      mapM render [playerPos + V3 x y z | x <- [-r..r], y <- [-r..r], z <- [-r..r], x^2 + z^2 <= r^2]
 
     -- Swap the buffers (aka draw the final image to the screen)
     lift $ GLFW.swapBuffers win
