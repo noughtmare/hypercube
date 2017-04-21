@@ -5,7 +5,6 @@ import Linear
 import Control.Lens
 import qualified Graphics.Rendering.OpenGL as GL
 import qualified Data.Vector as V
-import Data.Vector.Mutable (IOVector)
 import qualified Data.Map as M
 import Control.Arrow
 import Control.Concurrent.MVar
@@ -21,7 +20,12 @@ data Camera
   , _sensitivity :: !Float
   } deriving (Show)
 
-makeLensesFor [("_camPos","camPos"),("_jaw","jaw"),("_speed","speed"),("_sensitivity","sensitivity")] ''Camera
+makeLensesFor
+  [ ("_camPos","camPos")
+  , ("_jaw","jaw")
+  , ("_speed","speed")
+  , ("_sensitivity","sensitivity")
+  ] ''Camera
 
 -- | "Advanced" lensing (we check bounds inside the setter)
 pitch :: Lens' Camera Float
