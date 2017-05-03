@@ -41,6 +41,7 @@ library
       Config
       Faces
       Game
+      Shaders
       Types
       Util
   default-language: Haskell2010

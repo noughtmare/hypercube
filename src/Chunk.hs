@@ -35,14 +35,12 @@ import Control.Concurrent.STM
 
 toPos :: V3 Int -> Int
 toPos (V3 x y z) = x + chunkSize * y + (chunkSize ^ (2 :: Int)) * z
-{-# INLINE toPos #-}
 
 fromPos :: Int -> V3 Int
 fromPos n =
     let (n',x) = n `quotRem` chunkSize
         (z,y)  = n' `quotRem` chunkSize
     in V3 x y z
-{-# INLINE fromPos #-}
 
 newChunk :: V3 Int -> TChan (V.Vector (V4 Word8), BufferObject, MVar Int)-> IO Chunk
 newChunk v chan = do

@@ -10,6 +10,7 @@ import Chunk
 import Types
 import Config
 import Util
+import Shaders
 
 -- import qualified Debug.Trace as D
 
@@ -60,30 +61,7 @@ start = withWindow 1280 720 "Jaro's minecraft ripoff [WIP]" $ \win -> do
     -- vsync
     liftIO $ GLFW.swapInterval 1
 
-    p <- liftIO $ do -- Shaders
-      v <- GL.createShader GL.VertexShader
-      vSrc <- B.readFile "hypercube.v.glsl"
-      GL.shaderSourceBS v GL.$= vSrc
-      GL.compileShader v
-      vs <- GL.get (GL.compileStatus v)
-      when (not vs) $ do
-        print =<< GL.get (GL.shaderInfoLog v)
-        exitFailure
-
-      f <- GL.createShader GL.FragmentShader
-      fSrc <- B.readFile "hypercube.f.glsl"
-      GL.shaderSourceBS f GL.$= fSrc
-      GL.compileShader f
-      fs <- GL.get (GL.compileStatus f)
-      when (not fs) $ do
-        putStrLn =<< GL.get (GL.shaderInfoLog f)
-        exitFailure
-
-      p <- GL.createProgram
-      GL.attachShader p v
-      GL.attachShader p f
-      GL.linkProgram p
-      return p
+    p <- liftIO shaders
 
     -- Get the shader uniforms
     [modelLoc,viewLoc,projLoc] <- liftIO $
