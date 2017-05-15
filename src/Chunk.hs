@@ -123,3 +123,4 @@ renderChunk c modelLoc = flip execStateT c $ do
       vertexAttribArray (AttribLocation 0) $= Enabled
 
       drawArrays Triangles 0 $ fromIntegral n
+

@@ -72,7 +72,7 @@ start = withWindow 1280 720 "Jaro's minecraft ripoff [WIP]" $ \win -> do
       GL.currentProgram GL.$= Just p
 
       do -- Load texture & generate mipmaps
-        (Right texture) <- U.readTexture "stone.png"
+        (Right texture) <- U.readTexture "blocks.png"
         GL.textureBinding GL.Texture2D GL.$= Just texture
         GL.textureFilter  GL.Texture2D GL.$= ((GL.Nearest,Nothing),GL.Nearest)
 

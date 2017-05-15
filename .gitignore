@@ -25,3 +25,4 @@ cabal.project.local
 *.prof
 *.pdf
 *.ps
+_darcs

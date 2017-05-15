@@ -1,10 +1,10 @@
-resolver: lts-8.11
+resolver: lts-8.13
 
 packages:
 - '.'
 - location:
     git: https://github.com/noughtmare/GLUtil
-    commit: e59705e39f650420c00897022b1827af69abbee1
+    commit: a7276db223d0295ffeed790be59760ccce061db5
   extra-dep: true
 
 extra-deps: []
