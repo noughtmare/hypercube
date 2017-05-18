@@ -3,23 +3,23 @@ Minecraft clone in haskell focussed on performance.
 
 ## downloading
 ### with darcs
-```haskell
+```shell
 $ darcs clone --lazy Noughtmare@hub.darcs.net:Noughtmare/hypercube
 $ cd hypercube
 ```
 ### with git
-```haskell
+```shell
 $ git clone https://github.com/noughtmare/hypercube.git
 $ cd hypercube
 ```
 
 ## building
-```haskell
+```shell
 $ stack build
 ```
 
 ## running
-```haskell
+```shell
 $ stack exec hypercube
 ```
 
