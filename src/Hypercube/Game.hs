@@ -1,7 +1,3 @@
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE TupleSections #-}
 
 {-|
@@ -43,6 +39,7 @@ import qualified Data.Vector.Storable as SV
 import qualified Data.Map as M
 import Control.Concurrent.STM.TChan
 import Control.Monad.STM
+import Control.Applicative
 import System.Exit
 import qualified Data.ByteString as B
 import Data.Word (Word8)
@@ -59,7 +56,7 @@ start = withWindow 1280 720 "Hypercube" $ \win -> do
   game <- Game (Camera (V3 8 15 8) 0 0 5 0.05)
            <$> (realToFrac . fromJust <$> GLFW.getTime)
            <*> (fmap realToFrac . uncurry V2 <$> GLFW.getCursorPos win)
-           <*> (pure M.empty)
+           <*> pure M.empty
 
   void $ flip runStateT game $ do
     -- vsync
@@ -96,36 +93,36 @@ draw :: M44 Float -> GL.UniformLocation -> TChan (V.Vector (V4 Word8), GL.Buffer
 draw vp modelLoc chan = do
   m <- use world
   let
-    render v =
-      case M.lookup v m of
-        Just c -> do
-          c' <- liftIO $ execStateT (renderChunk modelLoc) c
-          world %= M.insert v c'
-        Nothing -> do
-          c <- liftIO $ newChunk v chan
-          c' <- liftIO $ execStateT (renderChunk modelLoc) c
-          world %= M.insert v c'
+    -- Lookup the chunk in the world and generate it if it doesn't exist
+    -- then render it and insert it back into the world.
+    render :: V3 Int -> StateT Game IO ()
+    render v = maybe (liftIO (newChunk v chan)) pure (M.lookup v m) -- lookup and maybe generate
+           >>= liftIO . execStateT (renderChunk modelLoc)           -- render
+           >>= (world %=) . M.insert v                              -- reinsert
 
-  playerPos <- fmap (\x -> floor (x / fromIntegral chunkSize)) <$> use (cam . camPos)
+  playerPos <- fmap (floor . (/ fromIntegral chunkSize)) <$> use (cam . camPos)
   let r = renderDistance
   mapM_ render $ do
-    v <- V3 <$> [-r..r] <*> [-r..r] <*> [-r..r]
+    v <- liftA3 V3 [-r..r] [-r..r] [-r..r]
     -- Filter out chunks that are ouside the screen (WIP)
-    let toRender = playerPos + v
-        projected = (\x -> x ^/ (x ^. _w))
-          $ vp !*! (identity & translation .~ (fromIntegral <$> (chunkSize *^ toRender))) 
-               !*  (1 & _xyz .~ fromIntegral chunkSize / 2)
-        diameter = fromIntegral chunkSize * sqrt 3
-    guard $ projected ^. _z >= -diameter
-    guard $ all ((<= 1 + diameter / abs (projected ^. _w)) . abs) $ (\x -> x ^. _xy) projected
-    return $ toRender
+    let toRender :: V3 Int
+        toRender = playerPos + v
+        projected :: V4 Float
+        projected = liftA2 (^/) id (^. _w) $ vp !* model
+        model :: V4 Float
+        model = (identity & translation .~ (fromIntegral <$> (chunkSize *^ toRender))) 
+             !* (1 & _xyz .~ fromIntegral chunkSize / 2)
+        radius = fromIntegral chunkSize / 2 * sqrt 3 -- the radius of the circumscribed sphere
+    guard $ projected ^. _z >= -radius
+    --guard $ all ((<= 1 + radius / abs (projected ^. _w)) . abs) $ projected ^. _xy
+    return toRender
 
 mainLoop :: GLFW.Window -> TChan (V.Vector (V4 Word8), GL.BufferObject, MVar Int) -> GL.UniformLocation -> GL.UniformLocation -> GL.UniformLocation -> StateT Game IO ()
 mainLoop win chan viewLoc projLoc modelLoc = do
   shouldClose <- liftIO $ GLFW.windowShouldClose win
   unless shouldClose $ do
 
-    liftIO $ GLFW.pollEvents
+    liftIO GLFW.pollEvents
 
     deltaTime <- do
       currentFrame <- realToFrac . fromJust <$> liftIO GLFW.getTime
@@ -163,18 +160,16 @@ mainLoop win chan viewLoc projLoc modelLoc = do
       deadLine <- liftIO $ (+ 0.001) . fromJust <$> GLFW.getTime
       let
         loadVbos = do
-          atomically (tryReadTChan chan) >>= \case
-            Just (vertices, vbo, var) -> do
-              if (V.length vertices > 0) then do
-                GL.bindBuffer GL.ArrayBuffer GL.$= Just vbo
-                U.replaceVector GL.ArrayBuffer (SV.convert vertices)
-                putMVar var (V.length vertices)
-              else do
-                putMVar var 0
-            Nothing -> return ()
+          atomically (tryReadTChan chan) >>= maybe (return ()) (\(vertices, vbo, var) ->
+            if V.length vertices > 0 then do
+              GL.bindBuffer GL.ArrayBuffer GL.$= Just vbo
+              U.replaceVector GL.ArrayBuffer (SV.convert vertices)
+              putMVar var (V.length vertices)
+            else do
+              putMVar var 0)
           now <- fromJust <$> GLFW.getTime
-          when (now < deadLine) $ loadVbos
-      liftIO $ loadVbos
+          when (now < deadLine) loadVbos
+      liftIO loadVbos
 
     draw (proj !*! view) modelLoc chan
 

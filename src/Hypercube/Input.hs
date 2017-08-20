@@ -47,7 +47,7 @@ keyboard win deltaTime = do
     right   = moveAmount *^ rotate (axisAngle (V3 0 1 0) curJaw) (V3 1 0 0)
     up      = moveAmount *^ V3 0 1 0
 
-  sequence_ $ zipWith (handle isPressed)
+  zipWithM_ (handle isPressed)
     [GLFW.Key'W, GLFW.Key'A, GLFW.Key'S, GLFW.Key'D, GLFW.Key'Space, GLFW.Key'LeftShift]
     (map (cam . camPos +=) [forward, -right, -forward, right, up, -up])
 

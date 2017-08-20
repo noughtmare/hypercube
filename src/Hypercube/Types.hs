@@ -42,7 +42,7 @@ pitch :: Lens' Camera Float
 pitch = lens _pitch setter
   where
     setter cam x
-      | abs x > pi/2 - epsilon = cam {_pitch = (signum x) * (pi / 2 - epsilon)}
+      | abs x > pi/2 - epsilon = cam {_pitch = signum x * (pi / 2 - epsilon)}
       | otherwise              = cam {_pitch = x}
     epsilon = 0.005
 

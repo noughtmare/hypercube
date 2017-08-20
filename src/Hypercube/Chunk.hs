@@ -1,6 +1,4 @@
 {-# LANGUAGE TupleSections #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE Strict #-}
 
 {-|
@@ -28,9 +26,7 @@ import qualified Data.Vector.Mutable as M
 import Graphics.Rendering.OpenGL hiding (get)
 import Linear
 import Control.Monad
-import Control.Lens ((+~), (&), (.~), (^.))
 import Foreign.Ptr (intPtrToPtr)
-import qualified Data.Vector as V (generate)
 import Control.Concurrent
 import Control.Lens
 import Data.Word (Word8)
@@ -67,7 +63,7 @@ updateChunk :: StateT Chunk IO ()
 updateChunk = do
   isChanging <- use chunkChanging
   var <- use chunkIsLoaded
-  when (not isChanging) $ do
+  unless isChanging $ do
     chunkChanging .= True
     blk  <- use chunkBlk
     chan <- use chunkChan
@@ -108,7 +104,7 @@ extractSurface blk pos = do
 renderChunk :: UniformLocation -> StateT Chunk IO ()
 renderChunk modelLoc = do
   isChanged <- use chunkChanged
-  when isChanged $ updateChunk
+  when isChanged updateChunk
   n <- use chunkElements
   when (n > 0) $ do
     use chunkVbo >>= (bindBuffer ArrayBuffer $=) . Just
@@ -116,7 +112,7 @@ renderChunk modelLoc = do
 
     liftIO $ do
       model <- toGLmatrix $ identity & translation +~
-        (fromIntegral chunkSize *^ (fmap fromIntegral pos))
+        (fromIntegral chunkSize *^ fmap fromIntegral pos)
       uniform modelLoc $= model
 
       vertexAttribPointer (AttribLocation 0) $=

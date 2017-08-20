@@ -1,5 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
-
 {-|
 Module      : Hypercube.ChunkManager
 Description : Manages the loading of Chunks

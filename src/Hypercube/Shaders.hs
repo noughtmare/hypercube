@@ -23,7 +23,7 @@ shaders = do
   GL.shaderSourceBS v GL.$= vector
   GL.compileShader v
   vs <- GL.get (GL.compileStatus v)
-  when (not vs) $ do
+  unless vs $ do
     print =<< GL.get (GL.shaderInfoLog v)
     exitFailure
 
@@ -31,7 +31,7 @@ shaders = do
   GL.shaderSourceBS f GL.$= fragment
   GL.compileShader f
   fs <- GL.get (GL.compileStatus f)
-  when (not fs) $ do
+  unless fs $ do
     putStrLn =<< GL.get (GL.shaderInfoLog f)
     exitFailure
 
