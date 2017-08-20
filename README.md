@@ -2,7 +2,6 @@
 Minecraft clone in haskell focussed on performance.
 
 ## downloading
-### with git
 ```shell
 $ git clone https://github.com/noughtmare/hypercube.git
 $ cd hypercube
@@ -16,6 +15,20 @@ $ stack build
 ## running
 ```shell
 $ stack exec hypercube
+```
+
+## controls
+
+```
+W     - move forward
+A     - move to the left
+S     - move backward
+D     - move to the right
+SHIFT - move down
+SPACE - move up
+CTRL  - speed up
+R     - toggle mouse cursor
+ESC   - quit game
 ```
 
 ## screenshots

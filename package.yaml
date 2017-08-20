@@ -1,11 +1,11 @@
 name:                hypercube
 version:             0.1.0.0
-homepage:            https://github.com/githubuser/hypercube#readme
+homepage:            https://github.com/noughtmare/hypercube#readme
 license:             GPL-3
-author:              Author name here
-maintainer:          example@example.com
-copyright:           2017 Author name here
-category:            Web
+author:              Jaro Reinders
+maintainer:          noughtmare@openmailbox.org
+copyright:           2017 Jaro Reinders
+category:            Game
 extra-source-files:
 - README.md
 
