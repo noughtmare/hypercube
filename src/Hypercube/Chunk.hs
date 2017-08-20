@@ -3,20 +3,25 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE Strict #-}
 
-module Chunk
+{-|
+Module      : Hypercube.Chunk
+Description : 3D Vectors
+Copyright   : (c) Jaro Reinders, 2017
+License     : GPL-3
+Maintainer  : noughtmare@openmailbox.org
+
+This module contains all code involving Chunks in Hypercube (except for the type declaration).
+-}
+
+module Hypercube.Chunk
   ( newChunk
-  , getBlock
-  , setBlock
-  -- , updateChunk
   , renderChunk
   ) where
 
--- import qualified Debug.Trace as D
-
-import Util
-import Types
-import Config (chunkSize, generatingF)
-import Faces
+import Hypercube.Chunk.Faces
+import Hypercube.Config (chunkSize, generatingF)
+import Hypercube.Types
+import Hypercube.Util
 
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as M
@@ -29,12 +34,14 @@ import qualified Data.Vector as V (generate)
 import Control.Concurrent
 import Control.Lens
 import Data.Word (Word8)
-import Control.Monad.State.Strict
+import Control.Monad.Trans.State
 import Control.Concurrent.STM.TChan
 import Control.Concurrent.STM
+import Control.Applicative (liftA2)
+import Control.Monad.IO.Class (liftIO)
 
 toPos :: V3 Int -> Int
-toPos (V3 x y z) = x + chunkSize * y + (chunkSize ^ (2 :: Int)) * z
+toPos (V3 x y z) = x + chunkSize * y + chunkSize * chunkSize * z
 
 fromPos :: Int -> V3 Int
 fromPos n =
@@ -56,12 +63,6 @@ newChunk v chan = do
     chan
     var
 
-getBlock :: Chunk -> V3 Int -> Block
-getBlock c v = (c ^. chunkBlk) V.! toPos v
-
-setBlock :: Chunk -> V3 Int -> Block -> Chunk
-setBlock c v b = c & chunkBlk %~ V.modify (\x -> M.write x (toPos v) b)
-
 updateChunk :: StateT Chunk IO ()
 updateChunk = do
   isChanging <- use chunkChanging
@@ -75,9 +76,9 @@ updateChunk = do
     -- We're (ab)using laziness here to postpone the actual surface extraction
     -- until the chunk data gets uploaded to the graphics card (in Game.hs)
     -- I don't think this is the best way to do this, but it works.
-    lift $ atomically $ writeTChan chan (extractSurface blk pos,vbo,var)
+    liftIO $ atomically $ writeTChan chan (extractSurface blk pos,vbo,var)
 
-  mayTemp <- lift $ tryTakeMVar var
+  mayTemp <- liftIO $ tryTakeMVar var
   case mayTemp of
     Nothing -> return ()
     Just l -> do
@@ -98,22 +99,22 @@ extractSurface blk pos = do
                  , eastFace & traverse . _w +~ 1
                  , westFace & traverse . _w +~ 1
                  ]
-  if all (\x -> x >= 0 && x < chunkSize) v'
-  then guard $ blk V.! (toPos v') == Air
-  else guard $ generatingF (v' + chunkSize *^ pos) == Air -- hack
+  guard $ (if all (liftA2 (&&) (>= 0) (< chunkSize)) v'
+            then blk V.! toPos v'
+            else generatingF (v' + chunkSize *^ pos)) == Air -- hack
   face & traverse +~ (0 & _xyz .~ fmap fromIntegral v)
 
 
-renderChunk :: Chunk -> UniformLocation -> IO Chunk
-renderChunk c modelLoc = flip execStateT c $ do
+renderChunk :: UniformLocation -> StateT Chunk IO ()
+renderChunk modelLoc = do
   isChanged <- use chunkChanged
   when isChanged $ updateChunk
   n <- use chunkElements
-  when (n /= 0) $ do
+  when (n > 0) $ do
     use chunkVbo >>= (bindBuffer ArrayBuffer $=) . Just
     pos <- use chunkPos
 
-    lift $ do
+    liftIO $ do
       model <- toGLmatrix $ identity & translation +~
         (fromIntegral chunkSize *^ (fmap fromIntegral pos))
       uniform modelLoc $= model

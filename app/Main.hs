@@ -1,6 +1,6 @@
 module Main where
 
-import Game
+import Hypercube.Game
 
 main :: IO ()
 main = start

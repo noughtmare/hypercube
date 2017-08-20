@@ -1,5 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Shaders (shaders) where
+{-|
+Module      : Hypercube.Shaders
+Description : The shaders
+Copyright   : (c) Jaro Reinders, 2017
+License     : GPL-3
+Maintainer  : noughtmare@openmailbox.org
+
+This module contains the shaders as strings and a function that produces an OpenGL @Program@ that uses those shaders.
+
+The shaders are inlined to make sure that they are present when running the game.
+-}
+module Hypercube.Shaders (shaders) where
 
 import qualified Graphics.Rendering.OpenGL as GL
 import qualified Data.ByteString as B

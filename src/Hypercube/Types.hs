@@ -1,5 +1,15 @@
 {-# LANGUAGE TemplateHaskell #-}
-module Types where
+{-|
+Module      : Hypercube.Types
+Description : Avoiding circular dependencies
+Copyright   : (c) Jaro Reinders, 2017
+License     : GPL-3
+Maintainer  : noughtmare@openmailbox.org
+
+This module contains all the types in one place to avoid circular dependencies.
+-}
+
+module Hypercube.Types where
 
 import Linear
 import Control.Lens

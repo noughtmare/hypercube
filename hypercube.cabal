@@ -1,4 +1,4 @@
--- This file has been generated from package.yaml by hpack version 0.17.0.
+-- This file has been generated from package.yaml by hpack version 0.17.1.
 --
 -- see: https://github.com/sol/hpack
 
@@ -23,7 +23,7 @@ library
   ghc-options: -O2
   build-depends:
       base >= 4.7 && < 5
-    , mtl
+    , transformers
     , lens
     , stm
     , OpenGL
@@ -37,13 +37,15 @@ library
     , bytestring
     , GLUtil
   exposed-modules:
-      Chunk
-      Config
-      Faces
-      Game
-      Shaders
-      Types
-      Util
+      Hypercube.Chunk
+      Hypercube.Chunk.Faces
+      Hypercube.ChunkManager
+      Hypercube.Config
+      Hypercube.Game
+      Hypercube.Input
+      Hypercube.Shaders
+      Hypercube.Types
+      Hypercube.Util
   default-language: Haskell2010
 
 executable hypercube
@@ -53,7 +55,7 @@ executable hypercube
   ghc-options: -O2 -threaded
   build-depends:
       base >= 4.7 && < 5
-    , mtl
+    , transformers
     , lens
     , stm
     , OpenGL
