@@ -1,4 +1,5 @@
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 {-|
 Module      : Hypercube.Game
@@ -21,7 +22,7 @@ import Hypercube.Util
 import Hypercube.Shaders
 import Hypercube.Input
 
--- import qualified Debug.Trace as D
+import qualified Debug.Trace as D
 
 import Control.Monad
 import Control.Monad.IO.Class
@@ -29,6 +30,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.State
 import Control.Lens
 import Control.Concurrent
+import Control.Exception
 import Data.Maybe
 import qualified Graphics.Rendering.OpenGL as GL
 import qualified Graphics.GLUtil as U
@@ -43,14 +45,32 @@ import Control.Applicative
 import System.Exit
 import qualified Data.ByteString as B
 import Data.Word (Word8)
+import Foreign.C.Types
+import Foreign.Ptr
+import System.Mem
+import Data.List
+import Data.IORef
 
+data Timeout = Timeout
+  deriving (Show)
+
+instance Exception Timeout
+
+timeout :: Int -> IO () -> IO ()
+timeout microseconds action = do
+  currentThreadId <- myThreadId
+  forkIO $ threadDelay microseconds >> throwTo currentThreadId Timeout
+  handle (\Timeout -> return ()) action
 
 start :: IO ()
 start = withWindow 1280 720 "Hypercube" $ \win -> do
   -- Disable the cursor
   GLFW.setCursorInputMode win GLFW.CursorInputMode'Disabled
 
+  todo <- newIORef []
   chan <- newTChanIO
+  startChunkManager todo chan
+
 
   -- Generate a new game world
   game <- Game (Camera (V3 8 15 8) 0 0 5 0.05)
@@ -87,38 +107,44 @@ start = withWindow 1280 720 "Hypercube" $ \win -> do
       GL.cullFace  GL.$= Just GL.Back
       GL.depthFunc GL.$= Just GL.Less
 
-    mainLoop win chan viewLoc projLoc modelLoc
+    mainLoop win todo chan viewLoc projLoc modelLoc
 
-draw :: M44 Float -> GL.UniformLocation -> TChan (V.Vector (V4 Word8), GL.BufferObject, MVar Int) -> StateT Game IO ()
-draw vp modelLoc chan = do
-  m <- use world
+draw :: M44 Float -> GL.UniformLocation -> IORef [V3 Int] ->  StateT Game IO ()
+draw vp modelLoc todo = do
   let
-    -- Lookup the chunk in the world and generate it if it doesn't exist
-    -- then render it and insert it back into the world.
-    render :: V3 Int -> StateT Game IO ()
-    render v = maybe (liftIO (newChunk v chan)) pure (M.lookup v m) -- lookup and maybe generate
-           >>= liftIO . execStateT (renderChunk modelLoc)           -- render
-           >>= (world %=) . M.insert v                              -- reinsert
+    render :: V3 Int -> StateT Game IO [V3 Int]
+    render v = do 
+      m <- use world
+      case M.lookup v m of
+        Nothing -> return [v]
+        Just c -> do
+          liftIO (execStateT (renderChunk v modelLoc) c) -- >>= (world %=) . M.insert v
+          return []
 
-  playerPos <- fmap (floor . (/ fromIntegral chunkSize)) <$> use (cam . camPos)
+  playerPos <- fmap ((`div` chunkSize) . floor) <$> use (cam . camPos)
   let r = renderDistance
-  mapM_ render $ do
-    v <- liftA3 V3 [-r..r] [-r..r] [-r..r]
-    -- Filter out chunks that are ouside the screen (WIP)
-    let toRender :: V3 Int
-        toRender = playerPos + v
-        projected :: V4 Float
-        projected = liftA2 (^/) id (^. _w) $ vp !* model
-        model :: V4 Float
-        model = (identity & translation .~ (fromIntegral <$> (chunkSize *^ toRender))) 
-             !* (1 & _xyz .~ fromIntegral chunkSize / 2)
-        radius = fromIntegral chunkSize / 2 * sqrt 3 -- the radius of the circumscribed sphere
-    guard $ projected ^. _z >= -radius
-    --guard $ all ((<= 1 + radius / abs (projected ^. _w)) . abs) $ projected ^. _xy
-    return toRender
+  liftIO . atomicWriteIORef todo . concat =<< mapM render 
+    (sortOn (distance (fmap fromIntegral playerPos) . fmap fromIntegral) $ do
+      v <- liftA3 V3 [-r..r] [-r..r] [-r..r]
+      let toRender :: V3 Int
+          toRender = playerPos + v
 
-mainLoop :: GLFW.Window -> TChan (V.Vector (V4 Word8), GL.BufferObject, MVar Int) -> GL.UniformLocation -> GL.UniformLocation -> GL.UniformLocation -> StateT Game IO ()
-mainLoop win chan viewLoc projLoc modelLoc = do
+          --normalized = liftA2 (^/) id (^. _w) $ projected
+
+          projected :: V4 Float
+          projected = vp !* model
+
+          model :: V4 Float
+          model = (identity & translation .~ (fromIntegral <$> (chunkSize *^ toRender))) 
+               !* (1 & _xyz .~ fromIntegral chunkSize / 2)
+          radius = fromIntegral chunkSize / 2 * sqrt 3 -- the radius of the circumscribed sphere
+      guard $ projected ^. _z >= -radius
+      --guard $ all ((<= 1 + radius / abs (projected ^. _w)) . abs) $ normalized ^. _xy
+      return toRender)
+
+mainLoop :: GLFW.Window -> IORef [V3 Int] -> TChan (V3 Int, Chunk, Ptr CUChar) 
+  -> GL.UniformLocation -> GL.UniformLocation -> GL.UniformLocation -> StateT Game IO ()
+mainLoop win todo chan viewLoc projLoc modelLoc = do
   shouldClose <- liftIO $ GLFW.windowShouldClose win
   unless shouldClose $ do
 
@@ -157,23 +183,24 @@ mainLoop win chan viewLoc projLoc modelLoc = do
     GL.uniform projLoc GL.$= projMat
 
     do
-      deadLine <- liftIO $ (+ 0.001) . fromJust <$> GLFW.getTime
       let
         loadVbos = do
-          atomically (tryReadTChan chan) >>= maybe (return ()) (\(vertices, vbo, var) ->
-            if V.length vertices > 0 then do
+          t <- liftIO $ (+ 0.001) . fromJust <$> GLFW.getTime
+          liftIO (atomically (tryReadTChan chan)) >>= maybe (return ()) (\(pos,Chunk blk vbo len _,ptr) -> do
+            liftIO $ putStrLn ("loadVbos: " ++ show pos)
+            liftIO $ when (len > 0) (do
               GL.bindBuffer GL.ArrayBuffer GL.$= Just vbo
-              U.replaceVector GL.ArrayBuffer (SV.convert vertices)
-              putMVar var (V.length vertices)
-            else do
-              putMVar var 0)
-          now <- fromJust <$> GLFW.getTime
-          when (now < deadLine) loadVbos
-      liftIO loadVbos
+              GL.bufferData GL.ArrayBuffer GL.$= (CPtrdiff (fromIntegral len), ptr, GL.StaticDraw))
+            world %= M.insert pos (Chunk blk vbo len False)
+            t' <- liftIO $ fromJust <$> GLFW.getTime
+            when (t' < t) loadVbos)
+      loadVbos
 
-    draw (proj !*! view) modelLoc chan
+    draw (proj !*! view) modelLoc todo
 
     liftIO $ GLFW.swapBuffers win
 
-    mainLoop win chan viewLoc projLoc modelLoc
+--    liftIO $ performMinorGC
+
+    mainLoop win todo chan viewLoc projLoc modelLoc
 

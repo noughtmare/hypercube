@@ -22,11 +22,11 @@ chunkSize = 16
 -- The number of chunks that gets loaded in any given direction.
 -- for example a render distance of 4 would render a 4x4x4 cube of chunks around the user.
 renderDistance :: Int
-renderDistance = 4
+renderDistance = 3
 
 -- The function that generates the landscape
 generatingF :: V3 Int -> Block
 generatingF (V3 x y z)
-  | fromIntegral y < (8 :: Double) * sin ((fromIntegral x / 8) * pi) * cos ((fromIntegral z / 16) * pi) = Stone
+  | fromIntegral y < (8 :: Double) * sin ((fromIntegral x / 16) * pi) * sin ((fromIntegral z / 16) * pi) = Stone
   | otherwise = Air
 

@@ -20,6 +20,9 @@ import Control.Arrow
 import Control.Concurrent.MVar
 import Data.Word (Word8)
 import Control.Concurrent.STM.TChan
+import Foreign.C.Types
+import Foreign.Ptr
+import Control.DeepSeq
 
 data Camera
   = Camera
@@ -65,7 +68,11 @@ data Game
 data Block
   = Air
   | Stone
-  deriving (Show, Eq)
+  deriving (Show, Eq, Enum)
+
+instance NFData Block where
+  rnf Air = ()
+  rnf Stone = ()
 
 data Chunk
   = Chunk
@@ -73,10 +80,6 @@ data Chunk
   , _chunkVbo      :: !GL.BufferObject
   , _chunkElements :: !Int
   , _chunkChanged  :: !Bool
-  , _chunkPos      :: !(V3 Int)
-  , _chunkChanging :: !Bool
-  , _chunkChan     :: !(TChan (V.Vector (V4 Word8), GL.BufferObject, MVar Int))
-  , _chunkIsLoaded :: !(MVar Int)
   }
 
 makeLenses ''Chunk

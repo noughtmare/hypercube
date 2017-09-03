@@ -11,7 +11,6 @@ This module contains the shaders as strings and a function that produces an Open
 The shaders are inlined to make sure that they are present when running the game.
 -}
 module Hypercube.Shaders (shaders) where
-
 import qualified Graphics.Rendering.OpenGL as GL
 import qualified Data.ByteString as B
 import System.Exit
@@ -45,7 +44,7 @@ vector :: B.ByteString
 vector = 
   "#version 330 core\n\
 
-  \layout (location = 0) in vec4 position;\
+  \layout (location = 0) in ivec4 position;\
 
   \uniform mat4 model;\
   \uniform mat4 view;\
@@ -54,8 +53,9 @@ vector =
   \out vec4 pos;\
 
   \void main() {\
-  \  gl_Position = projection * view * model * vec4(position.xyz, 1);\
-  \  pos = position;\
+  \  gl_Position = projection * view * model \
+       \* vec4(float(position.x),float(position.y),float(position.z), 1);\
+  \  pos = vec4(float(position.x),float(position.y),float(position.z),float(position.w));\
   \}\
   \"
 

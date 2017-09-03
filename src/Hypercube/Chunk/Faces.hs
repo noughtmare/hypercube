@@ -16,9 +16,9 @@ import Data.Vector
 
 -- The format of a vertex is: V4 x y z w, where w is the block type. At the moment there's only the grass block type so this last variable is not really used, but in the future the w variable has to be set somewhere else.
 
-northFace, southFace, eastFace, westFace, topFace, bottomFace :: Vector (V4 Word8)
+northFace, southFace, eastFace, westFace, topFace, bottomFace :: [V4 Word8]
 
-northFace = fromList
+northFace =
   [ V4 1 1 1 0 -- top    right
   , V4 0 1 1 0 -- top    left
   , V4 0 0 1 0 -- bottom left
@@ -27,7 +27,7 @@ northFace = fromList
   , V4 1 1 1 0 -- top    right
   ]
 
-southFace = fromList
+southFace =
   [ V4 0 0 0 0 -- bottom left
   , V4 0 1 0 0 -- top    left
   , V4 1 1 0 0 -- top    right
@@ -36,7 +36,7 @@ southFace = fromList
   , V4 0 0 0 0 -- bottom left
   ]
 
-eastFace = fromList
+eastFace =
   [ V4 1 1 0 0 -- top    right
   , V4 1 1 1 0 -- top    left
   , V4 1 0 1 0 -- bottom left
@@ -45,7 +45,7 @@ eastFace = fromList
   , V4 1 1 0 0 -- top    right
   ]
 
-westFace = fromList
+westFace =
   [ V4 0 0 1 0 -- bottom left
   , V4 0 1 1 0 -- top    left
   , V4 0 1 0 0 -- top    right
@@ -54,7 +54,7 @@ westFace = fromList
   , V4 0 0 1 0 -- bottom left
   ]
 
-topFace = fromList
+topFace =
   [ V4 0 1 0 (-16) -- bottom left
   , V4 0 1 1 (-16) -- top    left
   , V4 1 1 1 (-16) -- top    right
@@ -63,7 +63,7 @@ topFace = fromList
   , V4 0 1 0 (-16) -- bottom left
   ]
 
-bottomFace = fromList
+bottomFace =
   [ V4 1 0 1 (-16) -- top    right
   , V4 0 0 1 (-16) -- top    left
   , V4 0 0 0 (-16) -- bottom left
