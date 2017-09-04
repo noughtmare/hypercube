@@ -122,7 +122,7 @@ int project(int x,int y,int z) {
 //    return int[3] {x,y,z};
 //}
 
-char* extractSurface(int* len, int chunk_x, int chunk_y, int chunk_z, int chunk[16*16*16]) {
+char* extractSurface(int* len, int chunk[16*16*16]) {
     char allFilled = 1;
 
     for (int x = 0; x < 16; x++) {
@@ -151,22 +151,22 @@ char* extractSurface(int* len, int chunk_x, int chunk_y, int chunk_z, int chunk[
             for (int z = 0; z < 16; z++) {
                 if (chunk[project(x,y,z)]) {
                     if (x+1 < 16 && !chunk[project(x+1,y,z)]) {
-                        appendFace(n++,EAST,surface,chunk_x + x,chunk_y + y,chunk_z + z,1);
+                        appendFace(n++,EAST,surface,x,y,z,1);
                     }
                     if (x-1 >= 0 && !chunk[project(x-1,y,z)]) {
-                        appendFace(n++,WEST,surface,chunk_x + x,chunk_y + y,chunk_z + z,1);
+                        appendFace(n++,WEST,surface,x,y,z,1);
                     }
                     if (y+1 < 16 && !chunk[project(x,y+1,z)]) {
-                        appendFace(n++,TOP,surface,chunk_x + x,chunk_y + y,chunk_z + z,0);
+                        appendFace(n++,TOP,surface,x,y,z,0);
                     }
                     if (y-1 >= 0 && !chunk[project(x,y-1,z)]) {
-                        appendFace(n++,BOTTOM,surface,chunk_x + x,chunk_y + y,chunk_z + z,0);
+                        appendFace(n++,BOTTOM,surface,x,y,z,0);
                     }
                     if (z+1 < 16 && !chunk[project(x,y,z+1)]) {
-                        appendFace(n++,NORTH,surface,chunk_x + x,chunk_y + y,chunk_z + z,1);
+                        appendFace(n++,NORTH,surface,x,y,z,1);
                     }
                     if (z-1 >= 0 && !chunk[project(x,y,z-1)]) {
-                        appendFace(n++,SOUTH,surface,chunk_x + x,chunk_y + y,chunk_z + z,1);
+                        appendFace(n++,SOUTH,surface,x,y,z,1);
                     }
                     if (n * 24 > i * 50000 - 24 * 6) {
                         surface = realloc(surface, 50000 * ++i * sizeof(char));
@@ -202,7 +202,7 @@ int main () {
     int len = 0;
 
     // extract the surface
-    extractSurface(&len,0,0,0,chunk);
+    extractSurface(&len,chunk);
     
     // collect time difference
     diff = clock() - start;

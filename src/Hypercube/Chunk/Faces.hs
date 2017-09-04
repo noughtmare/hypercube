@@ -11,12 +11,13 @@ This module contains all the raw data for each of the faces of a block.
 module Hypercube.Chunk.Faces where
 
 import Linear
-import Data.Word (Word8)
-import Data.Vector
+import Data.Int (Int8)
+import Foreign.C.Types
 
 -- The format of a vertex is: V4 x y z w, where w is the block type. At the moment there's only the grass block type so this last variable is not really used, but in the future the w variable has to be set somewhere else.
+--
 
-northFace, southFace, eastFace, westFace, topFace, bottomFace :: [V4 Word8]
+northFace, southFace, eastFace, westFace, topFace, bottomFace :: [V4 Int8]
 
 northFace =
   [ V4 1 1 1 0 -- top    right

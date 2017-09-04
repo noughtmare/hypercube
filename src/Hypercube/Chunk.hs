@@ -34,9 +34,10 @@ import Foreign.Ptr
 import Foreign.C.Types
 import Foreign.Storable
 import Foreign.Marshal hiding (void)
+import Foreign.Marshal.Array
 import Control.Concurrent
 import Control.Lens
-import Data.Word (Word8)
+import Data.Int (Int8)
 import Control.Monad.Trans.State
 import Control.Concurrent.STM.TChan
 import Control.Concurrent.STM
@@ -47,6 +48,7 @@ import Data.Function
 import Data.IORef
 import Control.DeepSeq
 import qualified Data.Set as S
+import Control.Applicative
 
 {-
 minMaxBy :: (a -> a -> Ordering) -> a -> a -> (a,a)
@@ -66,7 +68,7 @@ unconsMinimumBy cmp (x:xs) = Just (unconsMinimumBy' x [] xs)
 
 startChunkManager 
   :: IORef [V3 Int]
-  -> TChan (V3 Int, Chunk, Ptr CUChar)
+  -> TChan (V3 Int, Chunk, Ptr (V4 Int8))
   -> IO ()
 startChunkManager todo chan = void $ forkIO $ fix $ \manageChunks -> do
   chunk <- atomicModifyIORef' todo $ \chunks -> 
@@ -79,7 +81,7 @@ startChunkManager todo chan = void $ forkIO $ fix $ \manageChunks -> do
       -- atomicModifyIORef' busy (\a -> (pos:a,())
       putStrLn ("chunkMan: " ++ show pos)
       (Chunk blk vbo 0 True) <- newChunk pos
-      (x,n) <- extractSurface pos blk
+      (x,n) <- extractSurfaceHs blk
       atomically $ writeTChan chan (pos, Chunk blk vbo n True, x)
       manageChunks
 
@@ -127,13 +129,13 @@ updateChunk pos = do
 --   | n < 0 || n >= (chunkSize ^ 3) = False
 --   | otherwise = True
 -- 
--- east, west, top, bottom, north, south :: Int -> Int
--- east   = toPos . (_x +~ 1) . fromPos
--- west   = toPos . (_x -~ 1) . fromPos
--- top    = toPos . (_y +~ 1) . fromPos
--- bottom = toPos . (_y -~ 1) . fromPos
--- north  = toPos . (_z +~ 1) . fromPos
--- south  = toPos . (_z -~ 1) . fromPos
+east, west, top, bottom, north, south :: V3 Int -> V3 Int
+east   = _x +~ 1
+west   = _x -~ 1
+top    = _y +~ 1
+bottom = _y -~ 1
+north  = _z +~ 1
+south  = _z -~ 1
 
 -- extractSurface :: V.Vector Block -> V3 Int -> V.Vector (V4 Word8)
 -- extractSurface blk pos = V.fromList $ do
@@ -152,18 +154,59 @@ updateChunk pos = do
 --       , (north v, northFace & traverse . _w +~ 1)
 --       , (south v, southFace & traverse . _w +~ 1)
 --       ]
+--
+data Direction = North | East | South | West | Top | Bottom
+  deriving (Show, Eq, Enum)
 
-extractSurface :: V3 Int -> V.Vector Block -> IO (Ptr CUChar, Int)
-extractSurface (V3 x y z) chunk = do
-  lenPtr <- new 0 :: IO (Ptr CInt)
-  ptr <- SV.unsafeWith (SV.convert (V.map (fromIntegral . fromEnum) chunk)) 
-           $ c_extractSurface lenPtr (fromIntegral x) (fromIntegral y) (fromIntegral z)
-  len <- peek lenPtr
-  let res = (ptr, fromIntegral len)
-  res `deepseq` return res
+dir :: Direction -> V3 Int -> V3 Int
+dir North = north
+dir East = east
+dir South = south
+dir West = west
+dir Top = top
+dir Bottom = bottom
 
-foreign import ccall "extractSurface" c_extractSurface 
-  :: Ptr CInt -> CInt -> CInt -> CInt -> Ptr CInt -> IO (Ptr CUChar)
+face :: Direction -> [V4 Int8]
+face North = northFace
+face East = eastFace
+face South = southFace
+face West = westFace
+face Top = topFace
+face Bottom = bottomFace
+
+extractSurfaceHs :: V.Vector Block -> IO (Ptr (V4 Int8), Int)
+extractSurfaceHs blk
+  | V.all (== blk V.! 0) blk = newArray [] >>= \x -> return (x, 0)
+  | otherwise = do
+      let 
+        list :: [V4 Int8]
+        list = do
+          v <- liftA3 V3 [0..15] [0..15] [0..15]
+          d <- [North .. Bottom] 
+          let v' = dir d v
+          guard (blk V.! toPos v /= Air 
+              && all (\x -> x >= 0 && x < 16) v' 
+              && blk V.! toPos v' == Air)
+          face d & traverse +~ (0 & _xyz .~ fmap fromIntegral v 
+                                  & _w   .~ if d `elem` [Top,Bottom] then 0 else 1)
+      arr <- newArray list 
+      return (arr, length list)
+
+-- extractSurface :: V.Vector Block -> IO (Ptr CUChar, Int)
+-- extractSurface chunk = do
+--   lenPtr <- new 0 :: IO (Ptr CInt)
+--   ptr <- SV.unsafeWith (SV.convert (V.map (fromIntegral . fromEnum) chunk)) 
+--            $ c_extractSurface lenPtr
+-- 
+--   len <- peek lenPtr
+-- 
+--   print =<< peekArray (fromIntegral len) ptr
+-- 
+--   let res = (ptr, fromIntegral len)
+--   res `deepseq` return res
+-- 
+-- foreign import ccall "extractSurface" c_extractSurface 
+--   :: Ptr CInt -> Ptr CInt -> IO (Ptr CUChar)
 
 renderChunk :: V3 Int -> UniformLocation -> StateT Chunk IO ()
 renderChunk pos modelLoc = do
@@ -174,12 +217,16 @@ renderChunk pos modelLoc = do
     use chunkVbo >>= (bindBuffer ArrayBuffer $=) . Just
     liftIO $ do
       model <- toGLmatrix $ identity & translation +~
-        (fromIntegral chunkSize *^ fmap fromIntegral pos)
+        (fromIntegral <$> chunkSize *^ pos)
       uniform modelLoc $= model
 
       vertexAttribPointer (AttribLocation 0) $=
         (KeepIntegral, VertexArrayDescriptor 4 Byte 0 (intPtrToPtr 0))
-      vertexAttribArray (AttribLocation 0) $= Enabled
 
+      putStrLn $ "before: " ++ show pos
+      vertexAttribArray (AttribLocation 0) $= Enabled
       drawArrays Triangles 0 $ fromIntegral n
+      vertexAttribArray (AttribLocation 0) $= Disabled
+      putStrLn $ "after: " ++ show pos
+
 

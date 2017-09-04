@@ -38,18 +38,19 @@ import Graphics.UI.GLFW as GLFW
 import Linear
 import qualified Data.Vector as V
 import qualified Data.Vector.Storable as SV
-import qualified Data.Map as M
+import qualified Data.Map.Strict as M
 import Control.Concurrent.STM.TChan
 import Control.Monad.STM
 import Control.Applicative
 import System.Exit
 import qualified Data.ByteString as B
-import Data.Word (Word8)
+import Data.Int (Int8)
 import Foreign.C.Types
 import Foreign.Ptr
 import System.Mem
 import Data.List
 import Data.IORef
+import Foreign.Storable
 
 data Timeout = Timeout
   deriving (Show)
@@ -137,12 +138,13 @@ draw vp modelLoc todo = do
           model :: V4 Float
           model = (identity & translation .~ (fromIntegral <$> (chunkSize *^ toRender))) 
                !* (1 & _xyz .~ fromIntegral chunkSize / 2)
+
           radius = fromIntegral chunkSize / 2 * sqrt 3 -- the radius of the circumscribed sphere
-      guard $ projected ^. _z >= -radius
+      --guard $ projected ^. _z >= -radius
       --guard $ all ((<= 1 + radius / abs (projected ^. _w)) . abs) $ normalized ^. _xy
       return toRender)
 
-mainLoop :: GLFW.Window -> IORef [V3 Int] -> TChan (V3 Int, Chunk, Ptr CUChar) 
+mainLoop :: GLFW.Window -> IORef [V3 Int] -> TChan (V3 Int, Chunk, Ptr (V4 Int8)) 
   -> GL.UniformLocation -> GL.UniformLocation -> GL.UniformLocation -> StateT Game IO ()
 mainLoop win todo chan viewLoc projLoc modelLoc = do
   shouldClose <- liftIO $ GLFW.windowShouldClose win
@@ -187,10 +189,10 @@ mainLoop win todo chan viewLoc projLoc modelLoc = do
         loadVbos = do
           t <- liftIO $ (+ 0.001) . fromJust <$> GLFW.getTime
           liftIO (atomically (tryReadTChan chan)) >>= maybe (return ()) (\(pos,Chunk blk vbo len _,ptr) -> do
-            liftIO $ putStrLn ("loadVbos: " ++ show pos)
-            liftIO $ when (len > 0) (do
+            liftIO $ putStrLn ("loadVbos: " ++ show (pos,len))
+            liftIO $ when (len > 0) $ do
               GL.bindBuffer GL.ArrayBuffer GL.$= Just vbo
-              GL.bufferData GL.ArrayBuffer GL.$= (CPtrdiff (fromIntegral len), ptr, GL.StaticDraw))
+              GL.bufferData GL.ArrayBuffer GL.$= (CPtrdiff (fromIntegral (sizeOf (undefined :: V4 Int8) * len)), ptr, GL.StaticDraw)
             world %= M.insert pos (Chunk blk vbo len False)
             t' <- liftIO $ fromJust <$> GLFW.getTime
             when (t' < t) loadVbos)

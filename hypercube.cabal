@@ -1,4 +1,4 @@
--- This file has been generated from package.yaml by hpack version 0.17.1.
+-- This file has been generated from package.yaml by hpack version 0.18.1.
 --
 -- see: https://github.com/sol/hpack
 
@@ -16,6 +16,7 @@ cabal-version:  >= 1.10
 
 extra-source-files:
     cbits/a.out
+    cbits/cchunk
     cbits/cchunk.c
     cbits/cchunk.h
     README.md
@@ -55,6 +56,8 @@ library
       Hypercube.Shaders
       Hypercube.Types
       Hypercube.Util
+  other-modules:
+      Paths_hypercube
   default-language: Haskell2010
 
 executable hypercube

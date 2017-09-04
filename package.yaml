@@ -41,7 +41,7 @@ library:
 
 executables:
   hypercube:
-    source-dirs:      app
-    main:             Main.hs
-    dependencies:     hypercube
-    ghc-options:      -threaded
+    source-dirs:        app
+    main:               Main.hs
+    dependencies:       hypercube
+    ghc-options:        -threaded
