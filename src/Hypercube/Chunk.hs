@@ -25,46 +25,22 @@ import Hypercube.Types
 import Hypercube.Util
 
 import qualified Data.Vector as V
-import qualified Data.Vector.Mutable as M
 import qualified Data.Vector.Storable as VS
 import Graphics.Rendering.OpenGL hiding (get)
 import Linear
 import Control.Monad
 import Foreign.Ptr
-import Foreign.C.Types
-import Foreign.Storable
-import Foreign.Marshal hiding (void)
-import Foreign.Marshal.Array
 import Control.Concurrent
 import Control.Lens
 import Data.Int (Int8)
 import Control.Monad.Trans.State
 import Control.Concurrent.STM.TChan
 import Control.Concurrent.STM
-import Control.Applicative (liftA2)
+import Control.Applicative (liftA3)
 import Control.Monad.IO.Class (liftIO)
-import Control.Arrow (first)
 import Data.Function
 import Data.IORef
 import Control.DeepSeq
-import qualified Data.Set as S
-import Control.Applicative
-
-{-
-minMaxBy :: (a -> a -> Ordering) -> a -> a -> (a,a)
-minMaxBy cmp a b = case cmp a b of
-  GT -> (b,a)
-  _  -> (a,b)
-
-unconsMinimumBy :: (a -> a -> Ordering) -> [a] -> Maybe (a,[a])
-unconsMinimumBy _ [] = Nothing
-unconsMinimumBy cmp (x:xs) = Just (unconsMinimumBy' x [] xs)
-  where
-    unconsMinimumBy' m r [] = (m,r)
-    unconsMinimumBy' m r (x:xs) = 
-      let (mi,ma) = minMaxBy cmp m x
-      in unconsMinimumBy' mi (ma:r) xs
--}
 
 startChunkManager 
   :: IORef [V3 Int]
@@ -123,11 +99,6 @@ updateChunk pos = do
 --       chunkElements .= l
   return ()
 
--- insideChunk :: Int -> Bool
--- insideChunk n 
---   | n < 0 || n >= (chunkSize ^ 3) = False
---   | otherwise = True
--- 
 east, west, top, bottom, north, south :: V3 Int -> V3 Int
 east   = _x +~ 1
 west   = _x -~ 1
@@ -136,41 +107,23 @@ bottom = _y -~ 1
 north  = _z +~ 1
 south  = _z -~ 1
 
--- extractSurface :: V.Vector Block -> V3 Int -> V.Vector (V4 Word8)
--- extractSurface blk pos = V.fromList $ do
---   (v,blockType) <- V.toList
---                  $ V.filter (\x -> snd x /= Air)
---                  $ V.indexed blk
---   (v',face) <- filter ((\v' -> insideChunk v' && blk V.! v' == Air) . fst) (faces v)
---   face & traverse . _xyz +~ fmap fromIntegral (fromPos v)
---   where
---     faces :: Int -> [(Int, [V4 Word8])]
---     faces v = 
---       [ (east v, eastFace & traverse . _w +~ 1)
---       , (west v, westFace & traverse . _w +~ 1)
---       , (top v, topFace)
---       , (bottom v, bottomFace)
---       , (north v, northFace & traverse . _w +~ 1)
---       , (south v, southFace & traverse . _w +~ 1)
---       ]
---
 data Direction = North | East | South | West | Top | Bottom
   deriving (Show, Eq, Enum)
 
 dir :: Direction -> V3 Int -> V3 Int
-dir North = north
-dir East = east
-dir South = south
-dir West = west
-dir Top = top
+dir North  = north
+dir East   = east
+dir South  = south
+dir West   = west
+dir Top    = top
 dir Bottom = bottom
 
 face :: Direction -> [V4 Int8]
-face North = northFace
-face East = eastFace
-face South = southFace
-face West = westFace
-face Top = topFace
+face North  = northFace
+face East   = eastFace
+face South  = southFace
+face West   = westFace
+face Top    = topFace
 face Bottom = bottomFace
 
 extractSurface :: V.Vector Block -> VS.Vector (V4 Int8)

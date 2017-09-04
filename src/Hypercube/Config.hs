@@ -22,7 +22,7 @@ chunkSize = 16
 -- The number of chunks that gets loaded in any given direction.
 -- for example a render distance of 4 would render a 4x4x4 cube of chunks around the user.
 renderDistance :: Int
-renderDistance = 8
+renderDistance = 10
 
 -- The function that generates the landscape
 generatingF :: V3 Int -> Block

@@ -8,13 +8,10 @@ copyright:           2017 Jaro Reinders
 category:            Game
 extra-source-files:
 - README.md
-- cbits/*
 
 ghc-options:
  - -O2
-
-cc-options:
- - -O3
+ - -Wall
 
 dependencies:
   - base >= 4.7 && < 5
@@ -31,10 +28,7 @@ dependencies:
   - GLFW-b
   - bytestring
   - GLUtil
-
-c-sources: cbits/cchunk.c
-include-dirs: cbits
-install-includes: cchunk.h
+  - MemoTrie
 
 library:
   source-dirs: src

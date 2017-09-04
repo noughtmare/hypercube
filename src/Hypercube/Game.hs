@@ -26,7 +26,6 @@ import qualified Debug.Trace as D
 
 import Control.Monad
 import Control.Monad.IO.Class
-import Control.Monad.Trans.Class
 import Control.Monad.Trans.State
 import Control.Lens
 import Control.Concurrent
@@ -36,21 +35,19 @@ import qualified Graphics.Rendering.OpenGL as GL
 import qualified Graphics.GLUtil as U
 import Graphics.UI.GLFW as GLFW
 import Linear
-import qualified Data.Vector as V
 import qualified Data.Vector.Storable as VS
 import qualified Data.Map.Strict as M
 import Control.Concurrent.STM.TChan
 import Control.Monad.STM
 import Control.Applicative
-import System.Exit
-import qualified Data.ByteString as B
 import Data.Int (Int8)
-import Foreign.C.Types
-import Foreign.Ptr
-import System.Mem
+import System.Mem (performMinorGC)
 import Data.List
 import Data.IORef
-import Foreign.Storable
+import Foreign.Storable (sizeOf)
+import Foreign.C.Types (CPtrdiff (CPtrdiff))
+import Data.Function
+import Data.MemoTrie
 
 data Timeout = Timeout
   deriving (Show)
@@ -110,8 +107,49 @@ start = withWindow 1280 720 "Hypercube" $ \win -> do
 
     mainLoop win todo chan viewLoc projLoc modelLoc
 
-draw :: M44 Float -> GL.UniformLocation -> IORef [V3 Int] ->  StateT Game IO ()
-draw vp modelLoc todo = do
+unitDodecahedron :: [(Int, V3 Float)]
+unitDodecahedron = zip [1..] $ [[x,y,z] | x <- [1,-1], y <- [1,-1], z <- [1,-1]]
+                            ++ ([[0,x * phi, y / phi] | x <- [1,-1], y <- [1,-1]]
+                           >>= cyclicPermutations)
+                           >>= \[x,y,z] -> return (normalize (V3 x y z))
+
+unitIcosahedron :: [(Int,V3 Float)]
+unitIcosahedron = zip [1..] $ [[0, x, y * phi] | x <- [1,-1], y <- [1,-1]] 
+                          >>= cyclicPermutations 
+                          >>= \[x,y,z] -> return (normalize (V3 x y z))
+
+-- golden ratio
+phi :: Float
+phi = (1 + sqrt 5) / 2
+
+cyclicPermutations :: [a] -> [[a]]
+cyclicPermutations xs = let l = length xs in take l $ map (take l) $ tails (cycle xs)
+
+visibleChunks :: Int -> Int -> V3 Float -> [V3 Int]
+visibleChunks height width gaze = memo3 f height width (fst (minimumBy (compare `on` distance gaze . snd) unitDodecahedron))
+  where
+   f :: Int -> Int -> Int -> [V3 Int]
+   f height width n = 
+     let gaze = fromJust (lookup n unitDodecahedron)
+         fov :: Float
+         fov = pi / 4 + 0.47
+         view :: M44 Float
+         view = lookAt (- (fromIntegral chunkSize * sqrt 2) / (2 * atan (fov / 2)) *^ gaze) 0 (V3 0 1 0)
+         proj :: M44 Float
+         proj = perspective fov (fromIntegral width / fromIntegral height) 0.1 1000
+     in sortOn (distance 0 . fmap fromIntegral) $ do
+       let r = renderDistance
+       v <- liftA3 V3 [-r..r] [-r..r] [-r..r]
+       let projected = proj !*! view !* model
+           model = (identity & translation .~ (fromIntegral <$> (chunkSize *^ v)))
+             !* (1 & _xyz .~ fromIntegral chunkSize / 2)
+           normalized = liftA2 (^/) id (^. _w) $ projected
+       guard $ all ((<= 1) . abs) $ normalized ^. _xyz
+       return v
+
+
+draw :: Int -> Int -> V3 Float -> M44 Float -> GL.UniformLocation -> IORef [V3 Int] ->  StateT Game IO ()
+draw height width gaze vp modelLoc todo = do
   let
     render :: V3 Int -> StateT Game IO [V3 Int]
     render pos = do 
@@ -125,24 +163,7 @@ draw vp modelLoc todo = do
   playerPos <- fmap ((`div` chunkSize) . floor) <$> use (cam . camPos)
   let r = renderDistance
   liftIO . atomicWriteIORef todo . concat =<< mapM render 
-    (sortOn (distance (fmap fromIntegral playerPos) . fmap fromIntegral) $ do
-      v <- liftA3 V3 [-r..r] [-r..r] [-r..r]
-      let toRender :: V3 Int
-          toRender = playerPos + v
-
-          --normalized = liftA2 (^/) id (^. _w) $ projected
-
-          projected :: V4 Float
-          projected = vp !* model
-
-          model :: V4 Float
-          model = (identity & translation .~ (fromIntegral <$> (chunkSize *^ toRender))) 
-               !* (1 & _xyz .~ fromIntegral chunkSize / 2)
-
-          radius = fromIntegral chunkSize / 2 * sqrt 3 -- the radius of the circumscribed sphere
-      guard $ projected ^. _z >= -radius
-      --guard $ all ((<= 1 + radius / abs (projected ^. _w)) . abs) $ normalized ^. _xy
-      return toRender)
+    (map (+ playerPos) (visibleChunks height width gaze))
 
 mainLoop :: GLFW.Window -> IORef [V3 Int] -> TChan (V3 Int, Chunk, VS.Vector (V4 Int8)) 
   -> GL.UniformLocation -> GL.UniformLocation -> GL.UniformLocation -> StateT Game IO ()
@@ -158,7 +179,7 @@ mainLoop win todo chan viewLoc projLoc modelLoc = do
       lastFrame .= currentFrame
       return deltaTime
 
-    -- liftIO $ print $ 1/deltaTime
+    liftIO $ print $ 1/deltaTime
 
     keyboard win deltaTime
     mouse win deltaTime
@@ -187,13 +208,13 @@ mainLoop win todo chan viewLoc projLoc modelLoc = do
     do
       let
         loadVbos = do
-          t <- liftIO $ (+ 0.004) . fromJust <$> GLFW.getTime
+          -- TODO: better timeout estimate (calculate time left until next frame)
+          t <- liftIO $ (+ 0.001) . fromJust <$> GLFW.getTime
           liftIO (atomically (tryReadTChan chan)) >>= maybe (return ()) (\(pos,Chunk blk _ _ _,v) -> do
             m <- use world
             if pos `M.member` m then
               loadVbos
             else do
-              --liftIO $ putStrLn ("loadVbos: " ++ show pos)
               let len = VS.length v
               vbo <- GL.genObjectName
               liftIO $ when (len > 0) $ do
@@ -207,11 +228,11 @@ mainLoop win todo chan viewLoc projLoc modelLoc = do
               when (t' < t) loadVbos)
       loadVbos
 
-    draw (proj !*! view) modelLoc todo
+    draw height width curGaze (proj !*! view) modelLoc todo
 
     liftIO $ GLFW.swapBuffers win
 
-    liftIO $ performMinorGC
+    --liftIO $ performMinorGC
 
     mainLoop win todo chan viewLoc projLoc modelLoc
 

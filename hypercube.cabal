@@ -15,23 +15,12 @@ build-type:     Simple
 cabal-version:  >= 1.10
 
 extra-source-files:
-    cbits/a.out
-    cbits/cchunk
-    cbits/cchunk.c
-    cbits/cchunk.h
     README.md
 
 library
   hs-source-dirs:
       src
-  ghc-options: -O2
-  cc-options: -O3
-  include-dirs:
-      cbits
-  install-includes:
-      cchunk.h
-  c-sources:
-      cbits/cchunk.c
+  ghc-options: -O2 -Wall
   build-depends:
       base >= 4.7 && < 5
     , transformers
@@ -47,6 +36,7 @@ library
     , GLFW-b
     , bytestring
     , GLUtil
+    , MemoTrie
   exposed-modules:
       Hypercube.Chunk
       Hypercube.Chunk.Faces
@@ -64,14 +54,7 @@ executable hypercube
   main-is: Main.hs
   hs-source-dirs:
       app
-  ghc-options: -O2 -threaded
-  cc-options: -O3
-  include-dirs:
-      cbits
-  install-includes:
-      cchunk.h
-  c-sources:
-      cbits/cchunk.c
+  ghc-options: -O2 -Wall -threaded
   build-depends:
       base >= 4.7 && < 5
     , transformers
@@ -87,5 +70,6 @@ executable hypercube
     , GLFW-b
     , bytestring
     , GLUtil
+    , MemoTrie
     , hypercube
   default-language: Haskell2010

@@ -17,11 +17,6 @@ import qualified Graphics.Rendering.OpenGL as GL
 import qualified Data.Vector as V
 import qualified Data.Map as M
 import Control.Arrow
-import Control.Concurrent.MVar
-import Data.Word (Word8)
-import Control.Concurrent.STM.TChan
-import Foreign.C.Types
-import Foreign.Ptr
 import Control.DeepSeq
 
 data Camera
