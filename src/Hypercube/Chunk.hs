@@ -26,7 +26,7 @@ import Hypercube.Util
 
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as M
-import qualified Data.Vector.Storable as SV
+import qualified Data.Vector.Storable as VS
 import Graphics.Rendering.OpenGL hiding (get)
 import Linear
 import Control.Monad
@@ -68,7 +68,7 @@ unconsMinimumBy cmp (x:xs) = Just (unconsMinimumBy' x [] xs)
 
 startChunkManager 
   :: IORef [V3 Int]
-  -> TChan (V3 Int, Chunk, Ptr (V4 Int8))
+  -> TChan (V3 Int, Chunk, VS.Vector (V4 Int8))
   -> IO ()
 startChunkManager todo chan = void $ forkIO $ fix $ \manageChunks -> do
   chunk <- atomicModifyIORef' todo $ \chunks -> 
@@ -79,10 +79,9 @@ startChunkManager todo chan = void $ forkIO $ fix $ \manageChunks -> do
     Nothing -> manageChunks
     Just pos -> do
       -- atomicModifyIORef' busy (\a -> (pos:a,())
-      putStrLn ("chunkMan: " ++ show pos)
-      (Chunk blk vbo 0 True) <- newChunk pos
-      (x,n) <- extractSurfaceHs blk
-      atomically $ writeTChan chan (pos, Chunk blk vbo n True, x)
+      --putStrLn ("chunkMan: " ++ show pos)
+      chunk <- newChunk pos
+      atomically $ writeTChan chan (pos, chunk, extractSurface (chunk ^. chunkBlk))
       manageChunks
 
 toPos :: V3 Int -> Int
@@ -95,10 +94,10 @@ fromPos n =
     in V3 x y z
 
 newChunk :: V3 Int -> IO Chunk
-newChunk v = do
-  vbo <- genObjectName
-  let blk = V.generate (chunkSize ^ (3 :: Int)) (generatingF . (+ chunkSize *^ v) . fromPos)
-  blk `deepseq` return (Chunk blk vbo 0 True)
+newChunk pos = do
+  --putStrLn ("newChunk: " ++ show pos)
+  let blk = V.generate (chunkSize ^ (3 :: Int)) (generatingF . (+ chunkSize *^ pos) . fromPos)
+  blk `deepseq` return (Chunk blk undefined 0 True)
 
 updateChunk :: V3 Int -> StateT Chunk IO ()
 updateChunk pos = do
@@ -174,44 +173,23 @@ face West = westFace
 face Top = topFace
 face Bottom = bottomFace
 
-extractSurfaceHs :: V.Vector Block -> IO (Ptr (V4 Int8), Int)
-extractSurfaceHs blk
-  | V.all (== blk V.! 0) blk = newArray [] >>= \x -> return (x, 0)
-  | otherwise = do
-      let 
-        list :: [V4 Int8]
-        list = do
-          v <- liftA3 V3 [0..15] [0..15] [0..15]
-          d <- [North .. Bottom] 
-          let v' = dir d v
-          guard (blk V.! toPos v /= Air 
-              && all (\x -> x >= 0 && x < 16) v' 
-              && blk V.! toPos v' == Air)
-          face d & traverse +~ (0 & _xyz .~ fmap fromIntegral v 
-                                  & _w   .~ if d `elem` [Top,Bottom] then 0 else 1)
-      arr <- newArray list 
-      return (arr, length list)
-
--- extractSurface :: V.Vector Block -> IO (Ptr CUChar, Int)
--- extractSurface chunk = do
---   lenPtr <- new 0 :: IO (Ptr CInt)
---   ptr <- SV.unsafeWith (SV.convert (V.map (fromIntegral . fromEnum) chunk)) 
---            $ c_extractSurface lenPtr
--- 
---   len <- peek lenPtr
--- 
---   print =<< peekArray (fromIntegral len) ptr
--- 
---   let res = (ptr, fromIntegral len)
---   res `deepseq` return res
--- 
--- foreign import ccall "extractSurface" c_extractSurface 
---   :: Ptr CInt -> Ptr CInt -> IO (Ptr CUChar)
+extractSurface :: V.Vector Block -> VS.Vector (V4 Int8)
+extractSurface blk
+  | V.all (== blk V.! 0) blk = VS.empty
+  | otherwise = VS.fromList $ do
+      v <- liftA3 V3 [0..15] [0..15] [0..15]
+      d <- [North .. Bottom] 
+      let v' = dir d v
+      guard (blk V.! toPos v /= Air 
+          && all (\x -> x >= 0 && x < 16) v' 
+          && blk V.! toPos v' == Air)
+      face d & traverse +~ (0 & _xyz .~ fmap fromIntegral v 
+                              & _w   .~ if d `elem` [Top,Bottom] then 0 else 1)
 
 renderChunk :: V3 Int -> UniformLocation -> StateT Chunk IO ()
 renderChunk pos modelLoc = do
-  isChanged <- use chunkChanged
-  when isChanged (updateChunk pos)
+  --isChanged <- use chunkChanged
+  --when isChanged (updateChunk pos)
   n <- use chunkElements
   when (n > 0) $ do
     use chunkVbo >>= (bindBuffer ArrayBuffer $=) . Just
@@ -223,10 +201,8 @@ renderChunk pos modelLoc = do
       vertexAttribPointer (AttribLocation 0) $=
         (KeepIntegral, VertexArrayDescriptor 4 Byte 0 (intPtrToPtr 0))
 
-      putStrLn $ "before: " ++ show pos
       vertexAttribArray (AttribLocation 0) $= Enabled
       drawArrays Triangles 0 $ fromIntegral n
       vertexAttribArray (AttribLocation 0) $= Disabled
-      putStrLn $ "after: " ++ show pos
 
 

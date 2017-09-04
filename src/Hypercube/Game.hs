@@ -37,7 +37,7 @@ import qualified Graphics.GLUtil as U
 import Graphics.UI.GLFW as GLFW
 import Linear
 import qualified Data.Vector as V
-import qualified Data.Vector.Storable as SV
+import qualified Data.Vector.Storable as VS
 import qualified Data.Map.Strict as M
 import Control.Concurrent.STM.TChan
 import Control.Monad.STM
@@ -114,12 +114,12 @@ draw :: M44 Float -> GL.UniformLocation -> IORef [V3 Int] ->  StateT Game IO ()
 draw vp modelLoc todo = do
   let
     render :: V3 Int -> StateT Game IO [V3 Int]
-    render v = do 
+    render pos = do 
       m <- use world
-      case M.lookup v m of
-        Nothing -> return [v]
+      case M.lookup pos m of
+        Nothing -> return [pos]
         Just c -> do
-          liftIO (execStateT (renderChunk v modelLoc) c) -- >>= (world %=) . M.insert v
+          liftIO (execStateT (renderChunk pos modelLoc) c) -- >>= (world %=) . M.insert v
           return []
 
   playerPos <- fmap ((`div` chunkSize) . floor) <$> use (cam . camPos)
@@ -140,11 +140,11 @@ draw vp modelLoc todo = do
                !* (1 & _xyz .~ fromIntegral chunkSize / 2)
 
           radius = fromIntegral chunkSize / 2 * sqrt 3 -- the radius of the circumscribed sphere
-      --guard $ projected ^. _z >= -radius
+      guard $ projected ^. _z >= -radius
       --guard $ all ((<= 1 + radius / abs (projected ^. _w)) . abs) $ normalized ^. _xy
       return toRender)
 
-mainLoop :: GLFW.Window -> IORef [V3 Int] -> TChan (V3 Int, Chunk, Ptr (V4 Int8)) 
+mainLoop :: GLFW.Window -> IORef [V3 Int] -> TChan (V3 Int, Chunk, VS.Vector (V4 Int8)) 
   -> GL.UniformLocation -> GL.UniformLocation -> GL.UniformLocation -> StateT Game IO ()
 mainLoop win todo chan viewLoc projLoc modelLoc = do
   shouldClose <- liftIO $ GLFW.windowShouldClose win
@@ -187,22 +187,31 @@ mainLoop win todo chan viewLoc projLoc modelLoc = do
     do
       let
         loadVbos = do
-          t <- liftIO $ (+ 0.001) . fromJust <$> GLFW.getTime
-          liftIO (atomically (tryReadTChan chan)) >>= maybe (return ()) (\(pos,Chunk blk vbo len _,ptr) -> do
-            liftIO $ putStrLn ("loadVbos: " ++ show (pos,len))
-            liftIO $ when (len > 0) $ do
-              GL.bindBuffer GL.ArrayBuffer GL.$= Just vbo
-              GL.bufferData GL.ArrayBuffer GL.$= (CPtrdiff (fromIntegral (sizeOf (undefined :: V4 Int8) * len)), ptr, GL.StaticDraw)
-            world %= M.insert pos (Chunk blk vbo len False)
-            t' <- liftIO $ fromJust <$> GLFW.getTime
-            when (t' < t) loadVbos)
+          t <- liftIO $ (+ 0.004) . fromJust <$> GLFW.getTime
+          liftIO (atomically (tryReadTChan chan)) >>= maybe (return ()) (\(pos,Chunk blk _ _ _,v) -> do
+            m <- use world
+            if pos `M.member` m then
+              loadVbos
+            else do
+              --liftIO $ putStrLn ("loadVbos: " ++ show pos)
+              let len = VS.length v
+              vbo <- GL.genObjectName
+              liftIO $ when (len > 0) $ do
+                GL.bindBuffer GL.ArrayBuffer GL.$= Just vbo
+                VS.unsafeWith v $ \ptr ->
+                  GL.bufferData GL.ArrayBuffer GL.$= 
+                    (CPtrdiff (fromIntegral (sizeOf (undefined :: V4 Int8) * len)), ptr, GL.StaticDraw)
+                GL.bindBuffer GL.ArrayBuffer GL.$= Nothing
+              world %= M.insert pos (Chunk blk vbo len False)
+              t' <- liftIO $ fromJust <$> GLFW.getTime
+              when (t' < t) loadVbos)
       loadVbos
 
     draw (proj !*! view) modelLoc todo
 
     liftIO $ GLFW.swapBuffers win
 
---    liftIO $ performMinorGC
+    liftIO $ performMinorGC
 
     mainLoop win todo chan viewLoc projLoc modelLoc
 

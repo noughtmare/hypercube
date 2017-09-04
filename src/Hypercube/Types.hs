@@ -77,7 +77,7 @@ instance NFData Block where
 data Chunk
   = Chunk
   { _chunkBlk      :: !(V.Vector Block)
-  , _chunkVbo      :: !GL.BufferObject
+  , _chunkVbo      :: GL.BufferObject
   , _chunkElements :: !Int
   , _chunkChanged  :: !Bool
   }
