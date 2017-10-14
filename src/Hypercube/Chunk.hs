@@ -57,7 +57,7 @@ startChunkManager todo chan = void $ forkIO $ fix $ \manageChunks -> do
       -- atomicModifyIORef' busy (\a -> (pos:a,())
       --putStrLn ("chunkMan: " ++ show pos)
       chunk <- newChunk pos
-      atomically $ writeTChan chan (pos, chunk, extractSurface (chunk ^. chunkBlk))
+      atomically $ writeTChan chan (pos, chunk, extractSurface pos (chunk ^. chunkBlk))
       manageChunks
 
 toPos :: V3 Int -> Int
@@ -126,16 +126,15 @@ face West   = westFace
 face Top    = topFace
 face Bottom = bottomFace
 
-extractSurface :: V.Vector Block -> VS.Vector (V4 Int8)
-extractSurface blk
+extractSurface :: V3 Int -> V.Vector Block -> VS.Vector (V4 Int8)
+extractSurface pos blk
   | V.all (== blk V.! 0) blk = VS.empty
   | otherwise = VS.fromList $ do
       v <- liftA3 V3 [0..15] [0..15] [0..15]
       d <- [North .. Bottom] 
       let v' = dir d v
       guard (blk V.! toPos v /= Air 
-          && all (\x -> x >= 0 && x < 16) v' 
-          && blk V.! toPos v' == Air)
+          && (if all (\x -> x >= 0 && x < 16) v' then blk V.! toPos v' else generatingF (chunkSize *^ pos + v')) == Air)
       face d & traverse +~ (0 & _xyz .~ fmap fromIntegral v 
                               & _w   .~ if d `elem` [Top,Bottom] then 0 else 1)
 

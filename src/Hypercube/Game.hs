@@ -216,7 +216,7 @@ mainLoop win todo chan viewLoc projLoc modelLoc = do
               loadVbos
             else do
               let len = VS.length v
-              vbo <- GL.genObjectName
+              vbo <- GL.genObjectName -- Creating vbo's in a separate thread is a bad idea, so we do it here.
               liftIO $ when (len > 0) $ do
                 GL.bindBuffer GL.ArrayBuffer GL.$= Just vbo
                 VS.unsafeWith v $ \ptr ->

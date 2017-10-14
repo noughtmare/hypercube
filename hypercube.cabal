@@ -1,13 +1,9 @@
--- This file has been generated from package.yaml by hpack version 0.18.1.
---
--- see: https://github.com/sol/hpack
-
 name:           hypercube
 version:        0.1.0.0
 category:       Game
 homepage:       https://github.com/noughtmare/hypercube#readme
 author:         Jaro Reinders
-maintainer:     noughtmare@openmailbox.org
+maintainer:     jaro.reinders@gmail.com
 copyright:      2017 Jaro Reinders
 license:        GPL-3
 license-file:   LICENSE
