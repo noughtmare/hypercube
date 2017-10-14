@@ -27,6 +27,7 @@ library
     , lens
     , stm
     , OpenGL
+    , OpenGLRaw
     , linear
     , vector
     , containers
@@ -41,6 +42,7 @@ library
       Hypercube.Chunk
       Hypercube.Chunk.Faces
       Hypercube.Config
+      Hypercube.Error
       Hypercube.Game
       Hypercube.Input
       Hypercube.Shaders
