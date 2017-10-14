@@ -73,7 +73,7 @@ newChunk :: V3 Int -> IO Chunk
 newChunk pos = do
   --putStrLn ("newChunk: " ++ show pos)
   let blk = V.generate (chunkSize ^ (3 :: Int)) (generatingF . (+ chunkSize *^ pos) . fromPos)
-  blk `deepseq` return (Chunk blk undefined 0 True)
+  blk `deepseq` return (Chunk blk undefined undefined 0 True)
 
 updateChunk :: V3 Int -> StateT Chunk IO ()
 updateChunk pos = do
@@ -138,8 +138,8 @@ extractSurface pos blk
       face d & traverse +~ (0 & _xyz .~ fmap fromIntegral v 
                               & _w   .~ if d `elem` [Top,Bottom] then 0 else 1)
 
-renderChunk :: V3 Int -> UniformLocation -> StateT Chunk IO ()
-renderChunk pos modelLoc = do
+renderChunkTheOldWay :: V3 Int -> UniformLocation -> StateT Chunk IO ()
+renderChunkTheOldWay pos modelLoc = do
   --isChanged <- use chunkChanged
   --when isChanged (updateChunk pos)
   n <- use chunkElements
@@ -157,4 +157,17 @@ renderChunk pos modelLoc = do
       drawArrays Triangles 0 $ fromIntegral n
       vertexAttribArray (AttribLocation 0) $= Disabled
 
+renderChunk :: V3 Int -> UniformLocation -> StateT Chunk IO ()
+renderChunk pos modelLoc = do
+  --isChanged <- use chunkChanged
+  --when isChanged (updateChunk pos)
+  n <- use chunkElements
+  when (n > 0) $ do
+    use chunkVao >>= (bindVertexArrayObject $=) . Just
+    liftIO $ do
+      model <- toGLmatrix $ identity & translation +~
+        (fromIntegral <$> chunkSize *^ pos)
+      uniform modelLoc $= model
+
+      drawArrays Triangles 0 $ fromIntegral n
 

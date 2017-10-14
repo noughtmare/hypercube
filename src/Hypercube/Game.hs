@@ -21,6 +21,7 @@ import Hypercube.Config
 import Hypercube.Util
 import Hypercube.Shaders
 import Hypercube.Input
+import Hypercube.Error
 
 import qualified Debug.Trace as D
 
@@ -31,6 +32,7 @@ import Control.Lens
 import Control.Concurrent
 import Control.Exception
 import Data.Maybe
+import Foreign.Ptr
 import qualified Graphics.Rendering.OpenGL as GL
 import qualified Graphics.GLUtil as U
 import Graphics.UI.GLFW as GLFW
@@ -210,25 +212,40 @@ mainLoop win todo chan viewLoc projLoc modelLoc = do
         loadVbos = do
           -- TODO: better timeout estimate (calculate time left until next frame)
           t <- liftIO $ (+ 0.001) . fromJust <$> GLFW.getTime
-          liftIO (atomically (tryReadTChan chan)) >>= maybe (return ()) (\(pos,Chunk blk _ _ _,v) -> do
+          liftIO (atomically (tryReadTChan chan)) >>= maybe (return ()) (\(pos,Chunk blk _ _ _ _,v) -> do
             m <- use world
             if pos `M.member` m then
               loadVbos
             else do
               let len = VS.length v
-              vbo <- GL.genObjectName -- Creating vbo's in a separate thread is a bad idea, so we do it here.
+              vao <- GL.genObjectName
+              GL.bindVertexArrayObject GL.$= Just vao
+
+              vbo <- GL.genObjectName
               liftIO $ when (len > 0) $ do
                 GL.bindBuffer GL.ArrayBuffer GL.$= Just vbo
                 VS.unsafeWith v $ \ptr ->
                   GL.bufferData GL.ArrayBuffer GL.$= 
                     (CPtrdiff (fromIntegral (sizeOf (undefined :: V4 Int8) * len)), ptr, GL.StaticDraw)
+
+                -- Associate the VAO with the data of the VBO.
+                -- The VBO doesn't need to be bound later when using the VAO.
+                GL.vertexAttribPointer (GL.AttribLocation 0) GL.$=
+                  (GL.KeepIntegral, GL.VertexArrayDescriptor 4 GL.Byte 0 (intPtrToPtr 0))
+                GL.vertexAttribArray (GL.AttribLocation 0) GL.$= GL.Enabled
+                
                 GL.bindBuffer GL.ArrayBuffer GL.$= Nothing
-              world %= M.insert pos (Chunk blk vbo len False)
+
+              GL.bindVertexArrayObject GL.$= Nothing
+
+              world %= M.insert pos (Chunk blk vbo vao len False)
               t' <- liftIO $ fromJust <$> GLFW.getTime
               when (t' < t) loadVbos)
       loadVbos
 
+    liftIO $ printErrors "At the start of the loop"
     draw height width curGaze (proj !*! view) modelLoc todo
+    liftIO $ printErrors "At the end of the loop"
 
     liftIO $ GLFW.swapBuffers win
 
