@@ -11,11 +11,22 @@ $ cd hypercube
 ```shell
 $ stack build
 ```
+or
+```shell
+$ cabal sandbox init
+$ cabal install --dependencies-only
+$ cabal build
+```
 
 ## running
 ```shell
-$ stack exec hypercube
+$ stack exec hypercube -- +RTS -N
 ```
+or
+```shell
+$ cabal run -- +RTS -N
+```
+The `+RTS -N` option is essential for good performance.
 
 ## controls
 
