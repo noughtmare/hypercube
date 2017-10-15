@@ -20,13 +20,12 @@ $ cabal build
 
 ## running
 ```shell
-$ stack exec hypercube -- +RTS -N
+$ stack exec hypercube
 ```
 or
 ```shell
-$ cabal run -- +RTS -N
+$ cabal run
 ```
-The `+RTS -N` option is essential for good performance.
 
 ## controls
 

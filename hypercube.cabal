@@ -52,22 +52,8 @@ executable hypercube
   main-is: Main.hs
   hs-source-dirs:
       app
-  ghc-options: -O2 -Wall -threaded
+  ghc-options: -O2 -Wall -threaded -with-rtsopts=-N
   build-depends:
       base >= 4.7 && < 5
-    , transformers
-    , lens
-    , stm
-    , OpenGL
-    , linear
-    , vector
-    , containers
-    , deepseq
-    , thyme
-    , vector-space
-    , GLFW-b
-    , bytestring
-    , GLUtil
-    , MemoTrie
     , hypercube
   default-language: Haskell2010
