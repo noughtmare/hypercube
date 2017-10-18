@@ -43,4 +43,8 @@ ESC   - quit game
 
 ## screenshots
 
-![screenshot01.png](./screenshots/screenshot01.png)
+![hourglass](./screenshots/hypercube-hourglass.png)
+![pit](./screenshots/hypercube-pit.png)
+![sinefield](./screenshots/hypercube-sinefield.png)
+
+
