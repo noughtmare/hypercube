@@ -26,7 +26,15 @@ renderDistance = 10
 
 -- The function that generates the landscape
 generatingF :: V3 Int -> Block
-generatingF (V3 x y z)
+generatingF = hourglass
+
+-- An empty hourglass shape
+hourglass :: V3 Int -> Block
+hourglass (V3 x y z) = if y*y >= x*x + z*z then Air else Stone
+
+-- A field of equally sized small hills and valleys made from the sine function
+sinefield :: V3 Int -> Block
+sinefield (V3 x y z)
   | fromIntegral y < (8 :: Double) * sin ((fromIntegral x / 16) * pi) * sin ((fromIntegral z / 16) * pi) = Stone
   | otherwise = Air
 

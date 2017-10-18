@@ -34,6 +34,7 @@ library
     , bytestring
     , GLUtil
     , MemoTrie
+    , file-embed
   exposed-modules:
       Hypercube.Chunk
       Hypercube.Chunk.Faces

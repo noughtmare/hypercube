@@ -23,14 +23,12 @@ import Hypercube.Shaders
 import Hypercube.Input
 import Hypercube.Error
 
-import qualified Debug.Trace as D
+--import qualified Debug.Trace as D
 
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.State
 import Control.Lens
-import Control.Concurrent
-import Control.Exception
 import Data.Maybe
 import Foreign.Ptr
 import qualified Graphics.Rendering.OpenGL as GL
@@ -43,24 +41,13 @@ import Control.Concurrent.STM.TChan
 import Control.Monad.STM
 import Control.Applicative
 import Data.Int (Int8)
-import System.Mem (performMinorGC)
+--import System.Mem (performMinorGC)
 import Data.List
 import Data.IORef
 import Foreign.Storable (sizeOf)
 import Foreign.C.Types (CPtrdiff (CPtrdiff))
 import Data.Function
 import Data.MemoTrie
-
-data Timeout = Timeout
-  deriving (Show)
-
-instance Exception Timeout
-
-timeout :: Int -> IO () -> IO ()
-timeout microseconds action = do
-  currentThreadId <- myThreadId
-  forkIO $ threadDelay microseconds >> throwTo currentThreadId Timeout
-  handle (\Timeout -> return ()) action
 
 start :: IO ()
 start = withWindow 1280 720 "Hypercube" $ \win -> do
@@ -116,8 +103,8 @@ unitDodecahedron = zip [1..] $ [[x,y,z] | x <- [1,-1], y <- [1,-1], z <- [1,-1]]
                            >>= \[x,y,z] -> return (normalize (V3 x y z))
 
 unitIcosahedron :: [(Int,V3 Float)]
-unitIcosahedron = zip [1..] $ [[0, x, y * phi] | x <- [1,-1], y <- [1,-1]] 
-                          >>= cyclicPermutations 
+unitIcosahedron = zip [1..] $ [[0, x, y * phi] | x <- [1,-1], y <- [1,-1]]
+                          >>= cyclicPermutations
                           >>= \[x,y,z] -> return (normalize (V3 x y z))
 
 -- golden ratio
@@ -128,21 +115,23 @@ cyclicPermutations :: [a] -> [[a]]
 cyclicPermutations xs = let l = length xs in take l $ map (take l) $ tails (cycle xs)
 
 visibleChunks :: Int -> Int -> V3 Float -> [V3 Int]
-visibleChunks height width gaze = memo3 f height width (fst (minimumBy (compare `on` distance gaze . snd) unitDodecahedron))
+visibleChunks height width gazeVec = memo3 f height width (fst (minimumBy (compare `on` distance gazeVec . snd) unitDodecahedron))
   where
    f :: Int -> Int -> Int -> [V3 Int]
-   f height width n = 
-     let gaze = fromJust (lookup n unitDodecahedron)
+   f h w n =
+     let gazeDir = fromJust (lookup n unitDodecahedron)
          fov :: Float
-         fov = pi / 4 + 0.47
-         view :: M44 Float
-         view = lookAt (- (fromIntegral chunkSize * sqrt 2) / (2 * atan (fov / 2)) *^ gaze) 0 (V3 0 1 0)
+         fov = pi / 4 + 0.5
+         viewMat :: M44 Float
+         viewMat = let p = (- (fromIntegral chunkSize * sqrt 3) / (2 * atan (fov / 2))) *^ gazeDir
+                       halfChunk = fromIntegral chunkSize / 2 *^ 1
+           in lookAt (p + halfChunk) halfChunk (V3 0 1 0)
          proj :: M44 Float
-         proj = perspective fov (fromIntegral width / fromIntegral height) 0.1 1000
-     in sortOn (distance 0 . fmap fromIntegral) $ do
+         proj = perspective fov (fromIntegral w / fromIntegral h) 0.1 1000
+     in sortOn (distance (0 :: V3 Double) . fmap fromIntegral) $ do
        let r = renderDistance
        v <- liftA3 V3 [-r..r] [-r..r] [-r..r]
-       let projected = proj !*! view !* model
+       let projected = proj !*! viewMat !* model
            model = (identity & translation .~ (fromIntegral <$> (chunkSize *^ v)))
              !* (1 & _xyz .~ fromIntegral chunkSize / 2)
            normalized = liftA2 (^/) id (^. _w) $ projected
@@ -150,24 +139,23 @@ visibleChunks height width gaze = memo3 f height width (fst (minimumBy (compare 
        return v
 
 
-draw :: Int -> Int -> V3 Float -> M44 Float -> GL.UniformLocation -> IORef [V3 Int] ->  StateT Game IO ()
-draw height width gaze vp modelLoc todo = do
+draw :: Int -> Int -> V3 Float -> GL.UniformLocation -> IORef [V3 Int] ->  StateT Game IO ()
+draw height width gazeVec modelLoc todo = do
   let
     render :: V3 Int -> StateT Game IO [V3 Int]
-    render pos = do 
+    render pos = do
       m <- use world
       case M.lookup pos m of
         Nothing -> return [pos]
         Just c -> do
-          liftIO (execStateT (renderChunk pos modelLoc) c) -- >>= (world %=) . M.insert v
+          _ <- liftIO (execStateT (renderChunk pos modelLoc) c)
           return []
 
   playerPos <- fmap ((`div` chunkSize) . floor) <$> use (cam . camPos)
-  let r = renderDistance
-  liftIO . atomicWriteIORef todo . concat =<< mapM render 
-    (map (+ playerPos) (visibleChunks height width gaze))
+  liftIO . atomicWriteIORef todo . concat =<< mapM render
+    (map (+ playerPos) (visibleChunks height width gazeVec))
 
-mainLoop :: GLFW.Window -> IORef [V3 Int] -> TChan (V3 Int, Chunk, VS.Vector (V4 Int8)) 
+mainLoop :: GLFW.Window -> IORef [V3 Int] -> TChan (V3 Int, Chunk, VS.Vector (V4 Int8))
   -> GL.UniformLocation -> GL.UniformLocation -> GL.UniformLocation -> StateT Game IO ()
 mainLoop win todo chan viewLoc projLoc modelLoc = do
   shouldClose <- liftIO $ GLFW.windowShouldClose win
@@ -198,8 +186,7 @@ mainLoop win todo chan viewLoc projLoc modelLoc = do
     curCamPos  <- use (cam . camPos)
     curGaze <- use (cam . gaze)
 
-    let view = lookAt curCamPos (curCamPos + curGaze) (V3 0 1 0)
-    viewMat <- liftIO $ toGLmatrix view
+    viewMat <- liftIO $ toGLmatrix $ lookAt curCamPos (curCamPos + curGaze) (V3 0 1 0)
     GL.uniform viewLoc GL.$= viewMat
 
     -- Change projection matrix
@@ -225,7 +212,7 @@ mainLoop win todo chan viewLoc projLoc modelLoc = do
               liftIO $ when (len > 0) $ do
                 GL.bindBuffer GL.ArrayBuffer GL.$= Just vbo
                 VS.unsafeWith v $ \ptr ->
-                  GL.bufferData GL.ArrayBuffer GL.$= 
+                  GL.bufferData GL.ArrayBuffer GL.$=
                     (CPtrdiff (fromIntegral (sizeOf (undefined :: V4 Int8) * len)), ptr, GL.StaticDraw)
 
                 -- Associate the VAO with the data of the VBO.
@@ -233,7 +220,7 @@ mainLoop win todo chan viewLoc projLoc modelLoc = do
                 GL.vertexAttribPointer (GL.AttribLocation 0) GL.$=
                   (GL.KeepIntegral, GL.VertexArrayDescriptor 4 GL.Byte 0 (intPtrToPtr 0))
                 GL.vertexAttribArray (GL.AttribLocation 0) GL.$= GL.Enabled
-                
+
                 GL.bindBuffer GL.ArrayBuffer GL.$= Nothing
 
               GL.bindVertexArrayObject GL.$= Nothing
@@ -244,7 +231,7 @@ mainLoop win todo chan viewLoc projLoc modelLoc = do
       loadVbos
 
     liftIO $ printErrors "At the start of the loop"
-    draw height width curGaze (proj !*! view) modelLoc todo
+    draw height width curGaze modelLoc todo
     liftIO $ printErrors "At the end of the loop"
 
     liftIO $ GLFW.swapBuffers win
