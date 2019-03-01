@@ -1,3 +1,5 @@
+**This program is not very efficient yet, I've been sucked into voxel engine optimizations and I have yet to find the time to play around with different kind of implementations. Also I wrote this code quite a while ago and I wouldn't consider it very idiomatic, but it is a working example of how to use OpenGL in Haskell.**
+
 # hypercube
 Minecraft clone in haskell focussed on performance.
 
