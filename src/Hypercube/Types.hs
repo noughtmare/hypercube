@@ -1,4 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE TypeApplications #-}
 {-|
 Module      : Hypercube.Types
 Description : Avoiding circular dependencies
@@ -14,10 +16,14 @@ module Hypercube.Types where
 import Linear
 import Control.Lens
 import qualified Graphics.Rendering.OpenGL as GL
-import qualified Data.Vector as V
 import qualified Data.Map as M
 import Control.Arrow
 import Control.DeepSeq
+import qualified Data.Vector.Storable as VS
+import Data.Int
+import Data.Vector.Storable (Storable)
+import Foreign (Storable(..), castPtr)
+import Data.Word (Word8)
 
 data Camera
   = Camera
@@ -65,13 +71,19 @@ data Block
   | Stone
   deriving (Show, Eq, Enum)
 
+instance Storable Block where
+  sizeOf _ = 1
+  alignment _ = 1
+  peek p = toEnum . fromIntegral <$> peek @Word8 (castPtr p)
+  poke p = poke @Word8 (castPtr p) . fromIntegral . fromEnum
+
 instance NFData Block where
   rnf Air = ()
   rnf Stone = ()
 
 data Chunk
   = Chunk
-  { _chunkBlk      :: !(V.Vector Block)
+  { _chunkBlk      :: !(VS.Vector Block)
   , _chunkVbo      :: GL.BufferObject -- ^ No need to keep it around.
   , _chunkVao      :: GL.VertexArrayObject
   , _chunkElements :: !Int
@@ -80,3 +92,5 @@ data Chunk
 
 makeLenses ''Chunk
 makeLenses ''Game
+
+data ChunkResponse = ChunkResponse !(V3 Int) !Chunk !(VS.Vector (V4 Int8)) 

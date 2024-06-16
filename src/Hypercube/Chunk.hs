@@ -1,7 +1,6 @@
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE ForeignFunctionInterface #-}
-{-# LANGUAGE BangPatterns #-}
+{-# OPTIONS_GHC -ddump-simpl -dsuppress-all -dno-suppress-type-signatures -ddump-to-file #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE BangPatterns #-}
 -- {-# LANGUAGE Strict #-}
 
 {-|
@@ -25,7 +24,6 @@ import Hypercube.Config (chunkSize, generatingF)
 import Hypercube.Types
 import Hypercube.Util
 
-import qualified Data.Vector as V
 import qualified Data.Vector.Storable as VS
 import Graphics.Rendering.OpenGL hiding (get)
 import Linear
@@ -41,17 +39,15 @@ import Control.Monad.IO.Class (liftIO)
 import Data.IORef
 import Control.DeepSeq (deepseq)
 
-startChunkManager 
-  :: IORef [V3 Int]
-  -> TChan (V3 Int, Chunk, VS.Vector (V4 Int8))
+startChunkManager
+  :: TChan (V3 Int)
+  -> TChan ChunkResponse
   -> IO ()
-startChunkManager todo chan = void $ forkIO $ forever $
-  atomicModifyIORef' todo (maybe ([],Nothing) (\(h,t) -> (t,Just h)) . uncons)
-    >>= maybe (return ()) (\pos -> do
-          -- atomicModifyIORef' busy (\a -> (pos:a,())
-          --putStrLn ("chunkMan: " ++ show pos)
-          chunk <- newChunk pos
-          atomically $ writeTChan chan (pos, chunk, extractSurface pos (chunk ^. chunkBlk)))
+startChunkManager todo chan = void $ forkIO $ forever $ do
+  pos <- atomically (readTChan todo)
+  chunk <- newChunk pos
+  let !cr = ChunkResponse pos chunk $ extractSurface pos $ chunk ^. chunkBlk
+  atomically $ writeTChan chan cr
 
 toPos :: V3 Int -> Int
 toPos (V3 x y z) = x + chunkSize * y + chunkSize * chunkSize * z
@@ -63,9 +59,10 @@ fromPos n =
     in V3 x y z
 
 newChunk :: V3 Int -> IO Chunk
+{-# SCC newChunk #-}
 newChunk pos = do
-  let blk = V.generate (chunkSize ^ (3 :: Int)) (generatingF . (+ chunkSize *^ pos) . fromPos)
-  blk `deepseq` return (Chunk blk undefined undefined 0 True)
+  let blk = VS.generate (chunkSize ^ (3 :: Int)) (generatingF . (+ chunkSize *^ pos) . fromPos)
+  return (Chunk blk undefined undefined 0 True)
 
 data Direction = North | East | South | West | Top | Bottom
   deriving (Show, Eq, Enum)
@@ -88,17 +85,24 @@ face = \case
   North  -> northFace
   South  -> southFace
 
-extractSurface :: V3 Int -> V.Vector Block -> VS.Vector (V4 Int8)
+-- extractOne :: V3 Int -> VS.Vector Block -> (VS.Vector (V4 Int8), VS.Vector (V4 Int8))
+-- extractOne = _
+
+extractSurface :: V3 Int -> VS.Vector Block -> VS.Vector (V4 Int8)
+{-# SCC extractSurface #-}
+{-# NOINLINE extractSurface #-}
 extractSurface pos blk = VS.fromList $ do
-      v <- liftA3 V3 [0..chunkSize - 1] [0..chunkSize - 1] [0..chunkSize - 1]
-      d <- [North .. Bottom] 
-      let v' = dir d v
-      guard (blk V.! toPos v /= Air)
-      guard $ (Air ==) $ if all (\x -> 0 <= x && x < chunkSize) v'
-        then blk V.! toPos v'
-        else generatingF ((chunkSize *^ pos) + v')
-      face d & traverse +~ (0 & _xyz .~ fmap fromIntegral v 
-                              & _w   .~ if d `elem` [Top,Bottom] then 0 else 1)
+  v <- liftA3 V3 [0..chunkSize - 1] [0..chunkSize - 1] [0..chunkSize - 1]
+  d <- [North .. Bottom] 
+  let v' = dir d v
+  guard (blk VS.! toPos v /= Air)
+  guard $ (Air ==) $ if all (\x -> 0 <= x && x < chunkSize) v'
+    then blk VS.! toPos v'
+    else generatingF ((chunkSize *^ pos) + v')
+  face d & traverse +~ 
+    (0
+      & _xyz .~ fmap fromIntegral v 
+      & _w   .~ if d `elem` [Top,Bottom] then 0 else 1)
 
 renderChunk :: V3 Int -> UniformLocation -> StateT Chunk IO ()
 renderChunk pos modelLoc = do

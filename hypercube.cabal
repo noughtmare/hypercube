@@ -30,9 +30,9 @@ library
     , deepseq
     , thyme
     , vector-space
-    , GLFW-b
+    , GLFW-b >= 3.3
     , bytestring
-    , GLUtil
+    , GLUtil >= 0.10
     , MemoTrie
     , file-embed
   exposed-modules:
@@ -53,7 +53,7 @@ executable hypercube
   main-is: Main.hs
   hs-source-dirs:
       app
-  ghc-options: -O2 -Wall -threaded -with-rtsopts=-N
+  ghc-options: -O2 -Wall -threaded -with-rtsopts=-N2 -with-rtsopts=--nonmoving-gc
   build-depends:
       base >= 4.7 && < 5
     , hypercube

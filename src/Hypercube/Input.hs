@@ -34,7 +34,7 @@ keyCallback _ _ _ _ _ = return ()
 keyboard :: GLFW.Window -> Float -> StateT Game IO ()
 keyboard win deltaTime = do
   let handle :: (GLFW.KeyState -> Bool) -> GLFW.Key -> StateT Game IO () -> StateT Game IO ()
-      handle f key action = f <$> liftIO (GLFW.getKey win key) >>= \x -> when x action
+      handle f key action = liftIO (GLFW.getKey win key) >>= (`when` action) . f
 
       isPressed GLFW.KeyState'Pressed = True
       isPressed _ = False

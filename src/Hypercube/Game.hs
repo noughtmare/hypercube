@@ -1,5 +1,5 @@
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 
 {-|
 Module      : Hypercube.Game
@@ -41,26 +41,29 @@ import Control.Concurrent.STM.TChan
 import Control.Monad.STM
 import Control.Applicative
 import Data.Int (Int8)
---import System.Mem (performMinorGC)
+import System.Mem (performGC)
 import Data.List
 import Data.IORef
 import Foreign.Storable (sizeOf)
 import Foreign.C.Types (CPtrdiff (CPtrdiff))
 import Data.Function
 import Data.MemoTrie
+import Numeric (showFFloat)
+import System.IO (hFlush, stdout)
+import Data.Foldable (traverse_)
 
 start :: IO ()
 start = withWindow 1280 720 "Hypercube" $ \win -> do
   -- Disable the cursor
   GLFW.setCursorInputMode win GLFW.CursorInputMode'Disabled
 
-  todo <- newIORef []
+  todo <- newTChanIO
   chan <- newTChanIO
   startChunkManager todo chan
 
 
   -- Generate a new game world
-  game <- Game (Camera (V3 8 15 8) 0 0 5 0.05)
+  game <- Game (Camera (V3 8 15 8) 0 0 5 0.2)
            <$> (realToFrac . fromJust <$> GLFW.getTime)
            <*> (fmap realToFrac . uncurry V2 <$> GLFW.getCursorPos win)
            <*> pure M.empty
@@ -134,12 +137,12 @@ visibleChunks height width gazeVec = memo3 f height width (fst (minimumBy (compa
        let projected = proj !*! viewMat !* model
            model = (identity & translation .~ (fromIntegral <$> (chunkSize *^ v)))
              !* (1 & _xyz .~ fromIntegral chunkSize / 2)
-           normalized = liftA2 (^/) id (^. _w) $ projected
+           normalized = liftA2 (^/) id (^. _w) projected
        guard $ all ((<= 1) . abs) $ normalized ^. _xyz
        return v
 
 
-draw :: Int -> Int -> V3 Float -> GL.UniformLocation -> IORef [V3 Int] ->  StateT Game IO ()
+draw :: Int -> Int -> V3 Float -> GL.UniformLocation -> TChan (V3 Int) ->  StateT Game IO ()
 draw height width gazeVec modelLoc todo = do
   let
     render :: V3 Int -> StateT Game IO [V3 Int]
@@ -152,10 +155,9 @@ draw height width gazeVec modelLoc todo = do
           return []
 
   playerPos <- fmap ((`div` chunkSize) . floor) <$> use (cam . camPos)
-  liftIO . atomicWriteIORef todo . concat =<< mapM render
-    (map (+ playerPos) (visibleChunks height width gazeVec))
+  liftIO . traverse_ (atomically . writeTChan todo) . concat =<< mapM (render . (+ playerPos)) (visibleChunks height width gazeVec)
 
-mainLoop :: GLFW.Window -> IORef [V3 Int] -> TChan (V3 Int, Chunk, VS.Vector (V4 Int8))
+mainLoop :: GLFW.Window -> TChan (V3 Int) -> TChan ChunkResponse
   -> GL.UniformLocation -> GL.UniformLocation -> GL.UniformLocation -> StateT Game IO ()
 mainLoop win todo chan viewLoc projLoc modelLoc = do
   shouldClose <- liftIO $ GLFW.windowShouldClose win
@@ -169,7 +171,8 @@ mainLoop win todo chan viewLoc projLoc modelLoc = do
       lastFrame .= currentFrame
       return deltaTime
 
-    liftIO $ print $ 1/deltaTime
+    liftIO $ putStr $ "\r" ++ showFFloat (Just 1) (1/deltaTime) ""
+    liftIO $ hFlush stdout
 
     keyboard win deltaTime
     mouse win deltaTime
@@ -197,9 +200,7 @@ mainLoop win todo chan viewLoc projLoc modelLoc = do
     do
       let
         loadVbos = do
-          -- TODO: better timeout estimate (calculate time left until next frame)
-          t <- liftIO $ (+ 0.001) . fromJust <$> GLFW.getTime
-          liftIO (atomically (tryReadTChan chan)) >>= maybe (return ()) (\(pos,Chunk blk _ _ _ _,v) -> do
+          liftIO (atomically (tryReadTChan chan)) >>= maybe (return ()) (\(ChunkResponse pos (Chunk blk _ _ _ _) v) -> do
             m <- use world
             if pos `M.member` m then
               loadVbos
@@ -225,10 +226,8 @@ mainLoop win todo chan viewLoc projLoc modelLoc = do
 
               GL.bindVertexArrayObject GL.$= Nothing
 
-              world %= M.insert pos (Chunk blk vbo vao len False)
-              t' <- liftIO $ fromJust <$> GLFW.getTime
-              when (t' < t) loadVbos)
-      loadVbos
+              world %= M.insert pos (Chunk blk vbo vao len False))
+      replicateM_ 100 loadVbos
 
     liftIO $ printErrors "At the start of the loop"
     draw height width curGaze modelLoc todo
@@ -236,7 +235,7 @@ mainLoop win todo chan viewLoc projLoc modelLoc = do
 
     liftIO $ GLFW.swapBuffers win
 
-    --liftIO $ performMinorGC
+    -- liftIO performGC
 
     mainLoop win todo chan viewLoc projLoc modelLoc
 
