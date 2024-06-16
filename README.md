@@ -10,21 +10,18 @@ $ cd hypercube
 ```
 
 ## building
+
+Make sure you have the right system dependencies, they are listed in
+`shell.nix`.
+
+Build with cabal:
+
 ```shell
-$ stack build
-```
-or
-```shell
-$ cabal sandbox init
-$ cabal install --dependencies-only
 $ cabal build
 ```
 
 ## running
-```shell
-$ stack exec hypercube
-```
-or
+
 ```shell
 $ cabal run
 ```
